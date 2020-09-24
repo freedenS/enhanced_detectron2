@@ -8,7 +8,7 @@ If you need converting your data format or other data operations, refer to [tool
 
 Most trains can follow the step. 
 
-If you want to modify some parameters, refer to this.
+If you want to modify some parameters, refer to [config-references](https://detectron2.readthedocs.io/modules/config.html#config-references).
 
 Sample data: [Google drive](https://drive.google.com/file/d/1oapspxvzrvNuncBID8m-sfBPqSIpg_ND/view?usp=sharing) [BaiduYun](https://pan.baidu.com/s/1UUvd3beGlm9pmOCky0oxOQ)(rt8u)
 
@@ -23,8 +23,10 @@ register_coco_instances('1', {}, './data/date/annotations/train.json',
 cfg = get_cfg()
 cfg.merge_from_file(config_file)
 cfg.DATASETS.TRAIN = ('1',)
+cfg.DATASETS.TEST = ('1',)
 cfg.MODEL.ROI_HEADS.NUM_CLASSES = 3
 trainer = DefaultTrainer(cfg)
+trainer.resume_or_load(False)
 trainer.train()
 ```
 
@@ -41,6 +43,18 @@ with open('config.yaml', 'w') as f:
 from detectron2.data.datasets import register_sem_seg
 config_file = './configs/Misc/semantic_R_50_FPN_1x.yaml'
 register_sem_seg('1', "gt_root", "image_root", "png", "jpg")
+```
+
+#### Rotated-RCNN
+
+annotation tool: [labelimg2](https://github.com/chinakook/labelImg2)
+
+```
+from detectron2.data.datasets import register_pascal_voc_rotated
+config_file = './configs/Rotated-Detection/rotated_faster_rcnn_R_50_FPN_1x.yaml'
+class_list = ['1', '2', '3', ...]
+cfg.MODEL.ROI_HEADS.NUM_CLASSES = len(class_list)
+register_pascal_voc_rotated('1', './path', 'train', 2020, class_list)
 ```
 
 ### Testing

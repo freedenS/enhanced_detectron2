@@ -163,16 +163,31 @@ class DatasetMapper:
                     anno.pop("keypoints", None)
 
             # USER: Implement additional transformations if you have other types of data
-            annos = [
-                utils.transform_instance_annotations(
-                    obj, transforms, image_shape, keypoint_hflip_indices=self.keypoint_hflip_indices
+            # MODIFY
+            # add rotated transformation
+            from detectron2.structures.boxes import BoxMode
+            if dataset_dict["annotations"][0]["bbox_mode"] == BoxMode.XYWHA_ABS:
+                annos = [
+                    utils.transform_instance_annotations_rotated(
+                        obj, transforms, image_shape, keypoint_hflip_indices=self.keypoint_hflip_indices
+                    )
+                    for obj in dataset_dict.pop("annotations")
+                    if obj.get("iscrowd", 0) == 0
+                ]
+                instances = utils.annotations_to_instances_rotated(
+                    annos, image_shape
                 )
-                for obj in dataset_dict.pop("annotations")
-                if obj.get("iscrowd", 0) == 0
-            ]
-            instances = utils.annotations_to_instances(
-                annos, image_shape, mask_format=self.instance_mask_format
-            )
+            else:
+                annos = [
+                    utils.transform_instance_annotations(
+                        obj, transforms, image_shape, keypoint_hflip_indices=self.keypoint_hflip_indices
+                    )
+                    for obj in dataset_dict.pop("annotations")
+                    if obj.get("iscrowd", 0) == 0
+                ]
+                instances = utils.annotations_to_instances(
+                    annos, image_shape, mask_format=self.instance_mask_format
+                )
 
             # After transforms such as cropping are applied, the bounding box may no longer
             # tightly bound the object. As an example, imagine a triangle object

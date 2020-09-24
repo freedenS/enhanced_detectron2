@@ -12,6 +12,7 @@ This file contains functions to register a COCO-format dataset to the DatasetCat
 
 __all__ = ["register_sem_seg", "register_coco_instances", "register_coco_panoptic_separated"]
 
+#MODIFY
 def register_sem_seg(name, gt_root, image_root, gt_ext="png", image_ext="jpg"):
     assert isinstance(name, str), name
     assert isinstance(gt_root, (str, os.PathLike)), gt_root

@@ -15,11 +15,11 @@ Detectron2 is Facebook AI Research's next generation software system that implem
 
 See [INSTALL.md](https://github.com/facebookresearch/detectron2/blob/master/INSTALL.md)
 
-Install Pre-Built package is recommended.
+build from source.
 
 ## Quick Start
 
-See [EASY_STARTED.md](EASY_STARTED.md)
+See [EASY_START.md](EASY_START.md)
 
 ## TODO
 
@@ -27,7 +27,7 @@ See [EASY_STARTED.md](EASY_STARTED.md)
 
 - [x] [voc split](./tools/data/README.md)
 - [x] [generate file list and label](./tools/data/README.md)
-- [x] [voc to coco](./tools/data/README.md)
+- [x] [voc to coco](./tools/data/README.md) modify from [voc2coco](https://github.com/yukkyo/voc2coco)
 - [x] [analyze data](./tools/data/README.md)
 - [ ] ...
 

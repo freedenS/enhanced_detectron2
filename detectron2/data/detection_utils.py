@@ -33,6 +33,7 @@ __all__ = [
     "transform_proposals",
     "transform_instance_annotations",
     "annotations_to_instances",
+    "transform_instance_annotations_rotated",
     "annotations_to_instances_rotated",
     "build_augmentation",
     "build_transform_gen",
@@ -275,12 +276,18 @@ def transform_instance_annotations(
     """
     if isinstance(transforms, (tuple, list)):
         transforms = T.TransformList(transforms)
-    # bbox is 1d (per-instance bounding box)
-    bbox = BoxMode.convert(annotation["bbox"], annotation["bbox_mode"], BoxMode.XYXY_ABS)
-    # clip transformed bbox to image size
-    bbox = transforms.apply_box(np.array([bbox]))[0].clip(min=0)
-    annotation["bbox"] = np.minimum(bbox, list(image_size + image_size)[::-1])
-    annotation["bbox_mode"] = BoxMode.XYXY_ABS
+    #MODIFY
+    #add rotated transform
+    if annotation['bbox_mode'] == BoxMode.XYWHA_ABS:
+        bbox = np.asarray([annotation['bbox']])
+        annotation['bbox'] = transforms.apply_rotated_box(bbox)[0]
+    else:
+        # bbox is 1d (per-instance bounding box)
+        bbox = BoxMode.convert(annotation["bbox"], annotation["bbox_mode"], BoxMode.XYXY_ABS)
+        # clip transformed bbox to image size
+        bbox = transforms.apply_box(np.array([bbox]))[0].clip(min=0)
+        annotation["bbox"] = np.minimum(bbox, list(image_size + image_size)[::-1])
+        annotation["bbox_mode"] = BoxMode.XYXY_ABS
 
     if "segmentation" in annotation:
         # each instance contains 1 or more polygons
@@ -419,6 +426,19 @@ def annotations_to_instances(annos, image_size, mask_format="polygon"):
 
     return target
 
+
+#MODIFY
+#add rotated transformation
+def transform_instance_annotations_rotated(
+    annotation, transforms, image_size, *, keypoint_hflip_indices=None
+):
+    if isinstance(transforms, (tuple, list)):
+        transforms = T.TransformList(transforms)
+
+    bbox = np.asarray([annotation['bbox']])
+    annotation['bbox'] = transforms.apply_rotated_box(bbox)[0]
+
+    return annotation
 
 def annotations_to_instances_rotated(annos, image_size):
     """
