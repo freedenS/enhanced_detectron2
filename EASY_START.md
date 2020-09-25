@@ -74,4 +74,50 @@ img = read_image('test.jpg')
 predictions = predictor(img)
 ```
 
+### Deployment
+
+#### RetinaNet
+
+PyTorch>=1.5
+
+```
+import torch
+from detectron2.config import get_cfg
+from detectron2.modeling import build_model
+from detectron2.data.detection_utils import read_image
+from detectron2.checkpoint import DetectionCheckpointer
+import detectron2.data.transforms as T
+
+config_file = './output/date-retinanet/model/config.yaml'
+model_file = './output/date-retinanet/model/model_final.pth'
+cfg = get_cfg()
+cfg.merge_from_file(config_file)
+cfg.MODEL.WEIGHTS = model_file
+
+torch_model = build_model(cfg)
+DetectionCheckpointer(torch_model).resume_or_load(cfg.MODEL.WEIGHTS)
+torch_model.eval()
+
+inputs = read_image('./input.jpg', 'BGR')
+transform_gen = T.ResizeShortestEdge([cfg.INPUT.MIN_SIZE_TEST, cfg.INPUT.MIN_SIZE_TEST], cfg.INPUT.MAX_SIZE_TEST)
+inputs = transform_gen.get_transform(inputs).apply_image(inputs)
+inputs = torch.as_tensor(inputs.astype('float32').transpose(2,0,1))
+inputs = inputs.unsqueeze(0)
+
+inputs_name = ['images']
+outputs_name = ['boxes', 'scores', 'labels']
+dynamic_axes = {'images':{2:'height', 3:'width'}, 'boxes':{0:'num'}, 'scores':{0:'num'}, 'labels':{0:'num'}}
+with torch.no_grad():
+    # ort
+    torch.onnx.export(torch_model, inputs, './retinanet.onnx', opset_version=11,
+                            input_names=inputs_name, output_names=outputs_name, dynamic_axes=dynamic_axes)
+```
+
+onnxruntime(gpu)>=1.3
+
+```
+import onnxruntime
+sess = onnxruntime.InferenceSession('./retinanet.onnx')
+oxres = sess.run(None, {sess.get_inputs()[0].name:inputs.numpy()})
+```
 

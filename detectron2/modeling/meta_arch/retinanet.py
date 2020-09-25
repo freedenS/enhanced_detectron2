@@ -6,6 +6,7 @@ import torch
 from fvcore.nn import sigmoid_focal_loss_jit, smooth_l1_loss
 from torch import nn
 from torch.nn import functional as F
+from torchvision.ops import boxes as box_ops
 
 from detectron2.data.detection_utils import convert_image_to_rgb
 from detectron2.layers import ShapeSpec, batched_nms, cat
@@ -149,6 +150,14 @@ class RetinaNet(nn.Module):
 
         anchors = self.anchor_generator(features)
         pred_logits, pred_anchor_deltas = self.head(features)
+        # MODIFY
+        if torch.onnx.is_in_onnx_export():
+            trt_results=[]
+            for (pred_logits_i, pred_anchor_deltas_i) in zip(pred_logits, pred_anchor_deltas):
+                trt_results.append(pred_logits_i.sigmoid())
+                trt_results.append(pred_anchor_deltas_i)
+            return trt_results
+
         # Transpose the Hi*Wi*A dimension to the middle:
         pred_logits = [permute_to_N_HWA_K(x, self.num_classes) for x in pred_logits]
         pred_anchor_deltas = [permute_to_N_HWA_K(x, 4) for x in pred_anchor_deltas]
@@ -171,6 +180,9 @@ class RetinaNet(nn.Module):
             return losses
         else:
             results = self.inference(anchors, pred_logits, pred_anchor_deltas, images.image_sizes)
+            # MODIFY
+            if torch.onnx.is_in_onnx_export():
+                return [results[0].pred_boxes.tensor, results[0].scores, results[0].pred_classes]
             processed_results = []
             for results_per_image, input_per_image, image_size in zip(
                 results, batched_inputs, images.image_sizes
@@ -355,20 +367,32 @@ class RetinaNet(nn.Module):
         boxes_all, scores_all, class_idxs_all = [
             cat(x) for x in [boxes_all, scores_all, class_idxs_all]
         ]
-        keep = batched_nms(boxes_all, scores_all, class_idxs_all, self.nms_threshold)
+        # MODIFY
+        keep = box_ops.nms(boxes_all, scores_all, self.nms_threshold)
+        # keep = batched_nms(boxes_all, scores_all, class_idxs_all, self.nms_threshold)
         keep = keep[: self.max_detections_per_image]
 
         result = Instances(image_size)
+        
         result.pred_boxes = Boxes(boxes_all[keep])
         result.scores = scores_all[keep]
         result.pred_classes = class_idxs_all[keep]
+
+        # MODIFY
+        if torch.onnx.is_in_onnx_export():
+            result.pred_boxes.tensor = box_ops.clip_boxes_to_image(result.pred_boxes.tensor, image_size)
+            result = result[box_ops.remove_small_boxes(result.pred_boxes.tensor, 0)]
         return result
 
     def preprocess_image(self, batched_inputs):
         """
         Normalize, pad and batch the input images.
         """
-        images = [x["image"].to(self.device) for x in batched_inputs]
+        # MODIFY
+        if torch.onnx.is_in_onnx_export():
+            images = [x.to(self.device) for x in batched_inputs]
+        else:
+            images = [x["image"].to(self.device) for x in batched_inputs]
         images = [(x - self.pixel_mean) / self.pixel_std for x in images]
         images = ImageList.from_tensors(images, self.backbone.size_divisibility)
         return images

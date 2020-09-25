@@ -41,7 +41,7 @@ See [EASY_START.md](EASY_START.md)
 
 ### deployments
 
-- [ ] RetinaNet-onnx
+- [x] RetinaNet-onnx
 - [ ] RetinaNet-tensorrt
 - [ ] FPN_Faster-onnx
 - [ ] FPN-Mask-onnx
