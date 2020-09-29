@@ -139,3 +139,17 @@ voc:
 ```
 
 format: coco or voc
+
+
+
+* `json_to_txt.py`
+
+A script converted json to txt. It will generate a directory (including all the txt files)  named annotations  and a label.txt in current directory.
+
+Usage:
+
+```
+python json_to_txt.py --json_file ./train.json
+```
+
+json_file: path to json file.

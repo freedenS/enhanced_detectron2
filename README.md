@@ -29,6 +29,7 @@ See [EASY_START.md](EASY_START.md)
 - [x] [generate file list and label](./tools/data/README.md)
 - [x] [voc to coco](./tools/data/README.md) modify from [voc2coco](https://github.com/yukkyo/voc2coco)
 - [x] [analyze data](./tools/data/README.md)
+- [x] [json_to_txt](./tools/data/README.md)
 - [ ] ...
 
 ### models
