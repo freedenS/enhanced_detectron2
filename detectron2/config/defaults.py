@@ -72,6 +72,15 @@ _C.INPUT.CROP.TYPE = "relative_range"
 # pixels if CROP.TYPE is "absolute"
 _C.INPUT.CROP.SIZE = [0.9, 0.9]
 
+# MOGAI
+_C.INPUT.COLOR_TRANSFORM = CN({"ENABLED": True})
+# brightness
+_C.INPUT.COLOR_TRANSFORM.RANDOM_BRIGHTNESS = [0.9, 1.1]
+# contrast
+_C.INPUT.COLOR_TRANSFORM.RANDOM_CONTRAST = [0.5, 1.5]
+# saturation
+_C.INPUT.COLOR_TRANSFORM.RANDOM_SATURATION = [0.5, 1.5]
+
 
 # Whether the model needs RGB, YUV, HSV etc.
 # Should be one of the modes defined here, as we use PIL to read the image:

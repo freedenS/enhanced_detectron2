@@ -580,6 +580,17 @@ def check_metadata_consistency(key, dataset_names):
             raise ValueError("Datasets have different metadata '{}'!".format(key))
 
 
+def construct_augmentation_list(cfg):
+    auglist = []
+    if cfg.INPUT.COLOR_TRANSFORM.ENABLED:
+        brightness_minmax = cfg.INPUT.COLOR_TRANSFORM.RANDOM_BRIGHTNESS
+        contrast_minmax = cfg.INPUT.COLOR_TRANSFORM.RANDOM_CONTRAST
+        saturation_minmax = cfg.INPUT.COLOR_TRANSFORM.RANDOM_SATURATION
+        auglist.append(T.RandomBrightness(brightness_minmax[0], brightness_minmax[1]))
+        auglist.append(T.RandomContrast(contrast_minmax[0], contrast_minmax[1]))
+        auglist.append(T.RandomSaturation(saturation_minmax[0], saturation_minmax[1]))
+    return auglist
+
 def build_augmentation(cfg, is_train):
     """
     Create a list of default :class:`Augmentation` from config.
@@ -599,6 +610,7 @@ def build_augmentation(cfg, is_train):
     augmentation = [T.ResizeShortestEdge(min_size, max_size, sample_style)]
     if is_train:
         augmentation.append(T.RandomFlip())
+        augmentation = augmentation + construct_augmentation_list(cfg)
     return augmentation
 
 
