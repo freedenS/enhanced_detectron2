@@ -52,3 +52,9 @@ See [EASY_START.md](EASY_START.md)
 - [ ] DETR-onnx
 - [ ] ...
 
+### operators
+
+- [x] nms_rotated to onnx
+- [ ] nms_rotated to pt
+- [ ] roi_align_rotated to onnx
+- [ ] roi_align_rotated to pt
