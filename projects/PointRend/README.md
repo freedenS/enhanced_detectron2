@@ -54,7 +54,7 @@ python train_net.py --config-file configs/InstanceSegmentation/pointrend_rcnn_R_
 <td align="center">36.2</td>
 <td align="center">39.7</td>
 <td align="center">164254221</td>
-<td align="center"><a href="https://dl.fbaipublicfiles.com/detectron2/PointRend/InstanceSegmentation/pointrend_rcnn_R_50_FPN_1x_coco/164254221/model_final_88c6f8.pkl">model</a>&nbsp;|&nbsp;<a href="https://dl.fbaipublicfiles.com/detectron2/PointRend/InstanceSegmentation/pointrend_rcnn_R_50_FPN_1x_coco/164254221/metrics.json">metrics</a></td>
+<td align="center"><a href="https://dl.fbaipublicfiles.com/detectron2/PointRend/InstanceSegmentation/pointrend_rcnn_R_50_FPN_1x_coco/164254221/model_final_736f5a.pkl">model</a>&nbsp;|&nbsp;<a href="https://dl.fbaipublicfiles.com/detectron2/PointRend/InstanceSegmentation/pointrend_rcnn_R_50_FPN_1x_coco/164254221/metrics.json">metrics</a></td>
 </tr>
  <tr><td align="left"><a href="configs/InstanceSegmentation/pointrend_rcnn_R_50_FPN_3x_coco.yaml">PointRend</a></td>
 <td align="center">R50-FPN</td>
@@ -63,11 +63,33 @@ python train_net.py --config-file configs/InstanceSegmentation/pointrend_rcnn_R_
 <td align="center">38.3</td>
 <td align="center">41.6</td>
 <td align="center">164955410</td>
-<td align="center"><a href="https://dl.fbaipublicfiles.com/detectron2/PointRend/InstanceSegmentation/pointrend_rcnn_R_50_FPN_3x_coco/164955410/model_final_3c3198.pkl">model</a>&nbsp;|&nbsp;<a href="https://dl.fbaipublicfiles.com/detectron2/PointRend/InstanceSegmentation/pointrend_rcnn_R_50_FPN_3x_coco/164955410/metrics.json">metrics</a></td>
+<td align="center"><a href="https://dl.fbaipublicfiles.com/detectron2/PointRend/InstanceSegmentation/pointrend_rcnn_R_50_FPN_3x_coco/164955410/model_final_edd263.pkl">model</a>&nbsp;|&nbsp;<a href="https://dl.fbaipublicfiles.com/detectron2/PointRend/InstanceSegmentation/pointrend_rcnn_R_50_FPN_3x_coco/164955410/metrics.json">metrics</a></td>
+</tr>
+</tr>
+ <tr><td align="left"><a href="configs/InstanceSegmentation/pointrend_rcnn_R_101_FPN_3x_coco.yaml">PointRend</a></td>
+<td align="center">R101-FPN</td>
+<td align="center">3&times;</td>
+<td align="center">224&times;224</td>
+<td align="center">40.1</td>
+<td align="center">43.8</td>
+<td align="center"></td>
+<td align="center"><a href="https://dl.fbaipublicfiles.com/detectron2/PointRend/InstanceSegmentation/pointrend_rcnn_R_101_FPN_3x_coco/28119983/model_final_3f4d2a.pkl">model</a>&nbsp;|&nbsp;<a href="https://dl.fbaipublicfiles.com/detectron2/PointRend/InstanceSegmentation/pointrend_rcnn_R_101_FPN_3x_coco/28119983/metrics.json">metrics</a></td>
+</tr>
+</tr>
+ <tr><td align="left"><a href="configs/InstanceSegmentation/pointrend_rcnn_X_101_32x8d_FPN_3x_coco.yaml">PointRend</a></td>
+<td align="center">X101-FPN</td>
+<td align="center">3&times;</td>
+<td align="center">224&times;224</td>
+<td align="center">41.1</td>
+<td align="center">44.7</td>
+<td align="center"></td>
+<td align="center"><a href="https://dl.fbaipublicfiles.com/detectron2/PointRend/InstanceSegmentation/pointrend_rcnn_X_101_32x8d_FPN_3x_coco/28119989/model_final_ba17b9.pkl">model</a>&nbsp;|&nbsp;<a href="https://dl.fbaipublicfiles.com/detectron2/PointRend/InstanceSegmentation/pointrend_rcnn_X_101_32x8d_FPN_3x_coco/28119989/metrics.json">metrics</a></td>
 </tr>
 </tbody></table>
 
-AP&ast; is COCO mask AP evaluated against the higher-quality LVIS annotations; see the paper for details. Run `python detectron2/datasets/prepare_cocofied_lvis.py` to prepare GT files for AP&ast; evaluation. Since LVIS annotations are not exhaustive `lvis-api` and not `cocoapi` should be used to evaluate AP&ast;.
+AP&ast; is COCO mask AP evaluated against the higher-quality LVIS annotations; see the paper for details.
+Run `python detectron2/datasets/prepare_cocofied_lvis.py` to prepare GT files for AP&ast; evaluation.
+Since LVIS annotations are not exhaustive, `lvis-api` and not `cocoapi` should be used to evaluate AP&ast;.
 
 #### Cityscapes
 Cityscapes model is trained with ImageNet pretraining.
@@ -89,7 +111,7 @@ Cityscapes model is trained with ImageNet pretraining.
 <td align="center">224&times;224</td>
 <td align="center">35.9</td>
 <td align="center">164255101</td>
-<td align="center"><a href="https://dl.fbaipublicfiles.com/detectron2/PointRend/InstanceSegmentation/pointrend_rcnn_R_50_FPN_1x_cityscapes/164255101/model_final_318a02.pkl">model</a>&nbsp;|&nbsp;<a href="https://dl.fbaipublicfiles.com/detectron2/PointRend/InstanceSegmentation/pointrend_rcnn_R_50_FPN_1x_cityscapes/164255101/metrics.json">metrics</a></td>
+<td align="center"><a href="https://dl.fbaipublicfiles.com/detectron2/PointRend/InstanceSegmentation/pointrend_rcnn_R_50_FPN_1x_cityscapes/164255101/model_final_115bfb.pkl">model</a>&nbsp;|&nbsp;<a href="https://dl.fbaipublicfiles.com/detectron2/PointRend/InstanceSegmentation/pointrend_rcnn_R_50_FPN_1x_cityscapes/164255101/metrics.json">metrics</a></td>
 </tr>
 </tbody></table>
 

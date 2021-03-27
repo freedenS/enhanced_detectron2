@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-# Copyright (c) Facebook, Inc. and its affiliates. All Rights Reserved
+# Copyright (c) Facebook, Inc. and its affiliates.
 
 import datetime
 import itertools
@@ -10,13 +10,15 @@ import time
 from collections import Counter
 import torch
 from fvcore.common.checkpoint import PeriodicCheckpointer as _PeriodicCheckpointer
-from fvcore.common.file_io import PathManager
+from fvcore.common.param_scheduler import ParamScheduler
 from fvcore.common.timer import Timer
 from fvcore.nn.precise_bn import get_bn_modules, update_bn_stats
 
 import detectron2.utils.comm as comm
 from detectron2.evaluation.testing import flatten_results_dict
+from detectron2.solver import LRMultiplier
 from detectron2.utils.events import EventStorage, EventWriter
+from detectron2.utils.file_io import PathManager
 
 from .train_loop import HookBase
 
@@ -131,7 +133,8 @@ class IterationTimer(HookBase):
         self._total_timer.resume()
 
     def after_step(self):
-        # +1 because we're in after_step
+        # +1 because we're in after_step, the current step is done
+        # but not yet counted
         iter_done = self.trainer.iter - self.trainer.start_iter + 1
         if iter_done >= self._warmup_iter:
             sec = self._step_timer.seconds()
@@ -171,6 +174,9 @@ class PeriodicWriter(HookBase):
 
     def after_train(self):
         for writer in self._writers:
+            # If any new data is found (e.g. produced by other after_train),
+            # write them before closing
+            writer.write()
             writer.close()
 
 
@@ -199,30 +205,45 @@ class LRScheduler(HookBase):
     It is executed after every iteration.
     """
 
-    def __init__(self, optimizer, scheduler):
+    def __init__(self, optimizer=None, scheduler=None):
         """
         Args:
             optimizer (torch.optim.Optimizer):
-            scheduler (torch.optim._LRScheduler)
+            scheduler (torch.optim.LRScheduler or fvcore.common.param_scheduler.ParamScheduler):
+                if a :class:`ParamScheduler` object, it defines the multiplier over the base LR
+                in the optimizer.
+
+        If any argument is not given, will try to obtain it from the trainer.
         """
         self._optimizer = optimizer
         self._scheduler = scheduler
 
+    def before_train(self):
+        self._optimizer = self._optimizer or self.trainer.optimizer
+        self._scheduler = self._scheduler or self.trainer.scheduler
+        if isinstance(self._scheduler, ParamScheduler):
+            self._scheduler = LRMultiplier(
+                self._optimizer,
+                self._scheduler,
+                self.trainer.max_iter,
+                last_iter=self.trainer.iter - 1,
+            )
+
         # NOTE: some heuristics on what LR to summarize
         # summarize the param group with most parameters
-        largest_group = max(len(g["params"]) for g in optimizer.param_groups)
+        largest_group = max(len(g["params"]) for g in self._optimizer.param_groups)
 
         if largest_group == 1:
             # If all groups have one parameter,
             # then find the most common initial LR, and use it for summary
-            lr_count = Counter([g["lr"] for g in optimizer.param_groups])
+            lr_count = Counter([g["lr"] for g in self._optimizer.param_groups])
             lr = lr_count.most_common()[0][0]
-            for i, g in enumerate(optimizer.param_groups):
+            for i, g in enumerate(self._optimizer.param_groups):
                 if g["lr"] == lr:
                     self._best_param_group_id = i
                     break
         else:
-            for i, g in enumerate(optimizer.param_groups):
+            for i, g in enumerate(self._optimizer.param_groups):
                 if len(g["params"]) == largest_group:
                     self._best_param_group_id = i
                     break
@@ -307,7 +328,8 @@ class EvalHook(HookBase):
     def __init__(self, eval_period, eval_function):
         """
         Args:
-            eval_period (int): the period to run `eval_function`.
+            eval_period (int): the period to run `eval_function`. Set to 0 to
+                not evaluate periodically (but still after the last iteration).
             eval_function (callable): a function which takes no arguments, and
                 returns a nested dict of evaluation metrics.
 
@@ -331,11 +353,11 @@ class EvalHook(HookBase):
             for k, v in flattened_results.items():
                 try:
                     v = float(v)
-                except Exception:
+                except Exception as e:
                     raise ValueError(
                         "[EvalHook] eval_function should return a nested dict of float. "
                         "Got '{}: {}' instead.".format(k, v)
-                    )
+                    ) from e
             self.trainer.storage.put_scalars(**flattened_results, smoothing_hint=False)
 
         # Evaluation may take different time among workers.
@@ -344,11 +366,13 @@ class EvalHook(HookBase):
 
     def after_step(self):
         next_iter = self.trainer.iter + 1
-        is_final = next_iter == self.trainer.max_iter
-        if is_final or (self._period > 0 and next_iter % self._period == 0):
+        if self._period > 0 and next_iter % self._period == 0:
             self._do_eval()
 
     def after_train(self):
+        # This condition is to prevent the eval from running after a failed training
+        if self.trainer.iter + 1 >= self.trainer.max_iter:
+            self._do_eval()
         # func is likely a closure that holds reference to the trainer
         # therefore we clean it to avoid circular reference in the end
         del self._func

@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-# Copyright (c) Facebook, Inc. and its affiliates. All Rights Reserved
+# Copyright (c) Facebook, Inc. and its affiliates.
 
 
 def add_deeplab_config(cfg):
@@ -20,6 +20,7 @@ def add_deeplab_config(cfg):
     cfg.MODEL.SEM_SEG_HEAD.ASPP_CHANNELS = 256
     cfg.MODEL.SEM_SEG_HEAD.ASPP_DILATIONS = [6, 12, 18]
     cfg.MODEL.SEM_SEG_HEAD.ASPP_DROPOUT = 0.1
+    cfg.MODEL.SEM_SEG_HEAD.USE_DEPTHWISE_SEPARABLE_CONV = False
     # Backbone new configs
     cfg.MODEL.RESNETS.RES4_DILATION = 1
     cfg.MODEL.RESNETS.RES5_MULTI_GRID = [1, 2, 4]

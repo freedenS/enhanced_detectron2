@@ -1,4 +1,5 @@
-# Copyright (c) Facebook, Inc. and its affiliates. All Rights Reserved
+# Copyright (c) Facebook, Inc. and its affiliates.
+import collections
 import math
 from typing import List
 import torch
@@ -23,7 +24,7 @@ class BufferList(nn.Module):
     """
 
     def __init__(self, buffers):
-        super(BufferList, self).__init__()
+        super().__init__()
         for i, buffer in enumerate(buffers):
             self.register_buffer(str(i), buffer)
 
@@ -62,10 +63,10 @@ def _broadcast_params(params, num_features, name):
         list[list[float]]: param for each feature
     """
     assert isinstance(
-        params, (list, tuple)
+        params, collections.abc.Sequence
     ), f"{name} in anchor generator has to be a list! Got {params}."
     assert len(params), f"{name} in anchor generator cannot be empty!"
-    if not isinstance(params[0], (list, tuple)):  # list[float]
+    if not isinstance(params[0], collections.abc.Sequence):  # params is list[float]
         return [params] * num_features
     if len(params) == 1:
         return list(params) * num_features
@@ -95,9 +96,9 @@ class DefaultAnchorGenerator(nn.Module):
 
         Args:
             sizes (list[list[float]] or list[float]):
-                If sizes is list[list[float]], sizes[i] is the list of anchor sizes
+                If ``sizes`` is list[list[float]], ``sizes[i]`` is the list of anchor sizes
                 (i.e. sqrt of anchor area) to use for the i-th feature map.
-                If sizes is list[float], the sizes are used for all feature maps.
+                If ``sizes`` is list[float], ``sizes`` is used for all feature maps.
                 Anchor sizes are given in absolute lengths in units of
                 the input image; they do not dynamically scale if the input image size changes.
             aspect_ratios (list[list[float]] or list[float]): list of aspect ratios
@@ -134,6 +135,7 @@ class DefaultAnchorGenerator(nn.Module):
         return BufferList(cell_anchors)
 
     @property
+    @torch.jit.unused
     def num_cell_anchors(self):
         """
         Alias of `num_anchors`.
@@ -141,6 +143,7 @@ class DefaultAnchorGenerator(nn.Module):
         return self.num_anchors
 
     @property
+    @torch.jit.unused
     def num_anchors(self):
         """
         Returns:

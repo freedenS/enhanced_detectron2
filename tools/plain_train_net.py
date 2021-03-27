@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-# Copyright (c) Facebook, Inc. and its affiliates. All Rights Reserved
+# Copyright (c) Facebook, Inc. and its affiliates.
 """
 Detectron2 training script with a plain training loop.
 
@@ -33,7 +33,7 @@ from detectron2.data import (
     build_detection_test_loader,
     build_detection_train_loader,
 )
-from detectron2.engine import default_argument_parser, default_setup, launch
+from detectron2.engine import default_argument_parser, default_setup, default_writers, launch
 from detectron2.evaluation import (
     CityscapesInstanceEvaluator,
     CityscapesSemSegEvaluator,
@@ -48,12 +48,7 @@ from detectron2.evaluation import (
 )
 from detectron2.modeling import build_model
 from detectron2.solver import build_lr_scheduler, build_optimizer
-from detectron2.utils.events import (
-    CommonMetricPrinter,
-    EventStorage,
-    JSONWriter,
-    TensorboardXWriter,
-)
+from detectron2.utils.events import EventStorage
 
 logger = logging.getLogger("detectron2")
 
@@ -74,13 +69,11 @@ def get_evaluator(cfg, dataset_name, output_folder=None):
             SemSegEvaluator(
                 dataset_name,
                 distributed=True,
-                num_classes=cfg.MODEL.SEM_SEG_HEAD.NUM_CLASSES,
-                ignore_label=cfg.MODEL.SEM_SEG_HEAD.IGNORE_VALUE,
                 output_dir=output_folder,
             )
         )
     if evaluator_type in ["coco", "coco_panoptic_seg"]:
-        evaluator_list.append(COCOEvaluator(dataset_name, cfg, True, output_folder))
+        evaluator_list.append(COCOEvaluator(dataset_name, output_dir=output_folder))
     if evaluator_type == "coco_panoptic_seg":
         evaluator_list.append(COCOPanopticEvaluator(dataset_name, output_folder))
     if evaluator_type == "cityscapes_instance":
@@ -140,15 +133,7 @@ def do_train(cfg, model, resume=False):
         checkpointer, cfg.SOLVER.CHECKPOINT_PERIOD, max_iter=max_iter
     )
 
-    writers = (
-        [
-            CommonMetricPrinter(max_iter),
-            JSONWriter(os.path.join(cfg.OUTPUT_DIR, "metrics.json")),
-            TensorboardXWriter(cfg.OUTPUT_DIR),
-        ]
-        if comm.is_main_process()
-        else []
-    )
+    writers = default_writers(cfg.OUTPUT_DIR, max_iter) if comm.is_main_process() else []
 
     # compared to "train_net.py", we do not support accurate timing and
     # precise BN here, because they are not trivial to implement in a small training loop
@@ -156,8 +141,7 @@ def do_train(cfg, model, resume=False):
     logger.info("Starting training from iteration {}".format(start_iter))
     with EventStorage(start_iter) as storage:
         for data, iteration in zip(data_loader, range(start_iter, max_iter)):
-            iteration = iteration + 1
-            storage.step()
+            storage.iter = iteration
 
             loss_dict = model(data)
             losses = sum(loss_dict.values())
@@ -176,14 +160,16 @@ def do_train(cfg, model, resume=False):
 
             if (
                 cfg.TEST.EVAL_PERIOD > 0
-                and iteration % cfg.TEST.EVAL_PERIOD == 0
-                and iteration != max_iter
+                and (iteration + 1) % cfg.TEST.EVAL_PERIOD == 0
+                and iteration != max_iter - 1
             ):
                 do_test(cfg, model)
                 # Compared to "train_net.py", the test results are not dumped to EventStorage
                 comm.synchronize()
 
-            if iteration - start_iter > 5 and (iteration % 20 == 0 or iteration == max_iter):
+            if iteration - start_iter > 5 and (
+                (iteration + 1) % 20 == 0 or iteration == max_iter - 1
+            ):
                 for writer in writers:
                     writer.write()
             periodic_checkpointer.step(iteration)

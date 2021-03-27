@@ -1,5 +1,6 @@
-// Copyright (c) Facebook, Inc. and its affiliates. All Rights Reserved
+// Copyright (c) Facebook, Inc. and its affiliates.
 #include "cocoeval.h"
+#include <time.h>
 #include <algorithm>
 #include <cstdint>
 #include <numeric>
@@ -480,16 +481,21 @@ py::dict Accumulate(
   struct tm local_time;
   std::array<char, 200> buffer;
   time(&rawtime);
+#ifdef _WIN32
+  localtime_s(&local_time, &rawtime);
+#else
   localtime_r(&rawtime, &local_time);
+#endif
   strftime(
       buffer.data(), 200, "%Y-%m-%d %H:%num_max_detections:%S", &local_time);
   return py::dict(
       "params"_a = params,
-      "counts"_a = std::vector<int64_t>({num_iou_thresholds,
-                                         num_recall_thresholds,
-                                         num_categories,
-                                         num_area_ranges,
-                                         num_max_detections}),
+      "counts"_a = std::vector<int64_t>(
+          {num_iou_thresholds,
+           num_recall_thresholds,
+           num_categories,
+           num_area_ranges,
+           num_max_detections}),
       "date"_a = buffer,
       "precision"_a = precisions_out,
       "recall"_a = recalls_out,

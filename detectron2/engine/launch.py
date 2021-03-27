@@ -1,4 +1,4 @@
-# Copyright (c) Facebook, Inc. and its affiliates. All Rights Reserved
+# Copyright (c) Facebook, Inc. and its affiliates.
 import logging
 import torch
 import torch.distributed as dist
@@ -25,7 +25,7 @@ def launch(main_func, num_gpus_per_machine, num_machines=1, machine_rank=0, dist
     """
     Launch multi-gpu or distributed training.
     This function must be called on all machines involved in the training.
-    It will spawn child processes (defined by ``num_gpus_per_machine`) on each machine.
+    It will spawn child processes (defined by ``num_gpus_per_machine``) on each machine.
 
     Args:
         main_func: a function that will be called by `main_func(*args)`

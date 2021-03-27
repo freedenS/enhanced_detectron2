@@ -1,4 +1,4 @@
-# Copyright (c) Facebook, Inc. and its affiliates. All Rights Reserved
+# Copyright (c) Facebook, Inc. and its affiliates.
 import logging
 import torch
 import torch.distributed as dist
@@ -50,7 +50,8 @@ class FrozenBatchNorm2d(nn.Module):
             bias = self.bias - self.running_mean * scale
             scale = scale.reshape(1, -1, 1, 1)
             bias = bias.reshape(1, -1, 1, 1)
-            return x * scale + bias
+            out_dtype = x.dtype  # may be half
+            return x * scale.to(out_dtype) + bias.to(out_dtype)
         else:
             # When gradients are not needed, F.batch_norm is a single fused op
             # and provide more optimization opportunities.
@@ -77,6 +78,9 @@ class FrozenBatchNorm2d(nn.Module):
             if prefix + "running_var" not in state_dict:
                 state_dict[prefix + "running_var"] = torch.ones_like(self.running_var)
 
+        # NOTE: if a checkpoint is trained with BatchNorm and loaded (together with
+        # version number) to FrozenBatchNorm, running_var will be wrong. One solution
+        # is to remove the version number from the checkpoint.
         if version is not None and version < 3:
             logger = logging.getLogger(__name__)
             logger.info("FrozenBatchNorm {} is upgraded to version 3.".format(prefix.rstrip(".")))
@@ -93,7 +97,7 @@ class FrozenBatchNorm2d(nn.Module):
     @classmethod
     def convert_frozen_batchnorm(cls, module):
         """
-        Convert BatchNorm/SyncBatchNorm in module into FrozenBatchNorm.
+        Convert all BatchNorm/SyncBatchNorm in module into FrozenBatchNorm.
 
         Args:
             module (torch.nn.Module):
@@ -134,6 +138,8 @@ def get_norm(norm, out_channels):
     Returns:
         nn.Module or None: the normalization layer
     """
+    if norm is None:
+        return None
     if isinstance(norm, str):
         if len(norm) == 0:
             return None

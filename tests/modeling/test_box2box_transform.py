@@ -1,23 +1,21 @@
-# Copyright (c) Facebook, Inc. and its affiliates. All Rights Reserved
+# Copyright (c) Facebook, Inc. and its affiliates.
 import logging
 import unittest
 import torch
 
 from detectron2.modeling.box_regression import Box2BoxTransform, Box2BoxTransformRotated
+from detectron2.utils.env import TORCH_VERSION
+from detectron2.utils.testing import random_boxes
 
 logger = logging.getLogger(__name__)
-
-
-def random_boxes(mean_box, stdev, N):
-    return torch.rand(N, 4) * stdev + torch.tensor(mean_box, dtype=torch.float)
 
 
 class TestBox2BoxTransform(unittest.TestCase):
     def test_reconstruction(self):
         weights = (5, 5, 10, 10)
         b2b_tfm = Box2BoxTransform(weights=weights)
-        src_boxes = random_boxes([10, 10, 20, 20], 1, 10)
-        dst_boxes = random_boxes([10, 10, 20, 20], 1, 10)
+        src_boxes = random_boxes(10)
+        dst_boxes = random_boxes(10)
 
         devices = [torch.device("cpu")]
         if torch.cuda.is_available():
@@ -27,7 +25,20 @@ class TestBox2BoxTransform(unittest.TestCase):
             dst_boxes = dst_boxes.to(device=device)
             deltas = b2b_tfm.get_deltas(src_boxes, dst_boxes)
             dst_boxes_reconstructed = b2b_tfm.apply_deltas(deltas, src_boxes)
-            assert torch.allclose(dst_boxes, dst_boxes_reconstructed)
+            self.assertTrue(torch.allclose(dst_boxes, dst_boxes_reconstructed))
+
+    @unittest.skipIf(TORCH_VERSION < (1, 8), "Insufficient pytorch version")
+    def test_apply_deltas_tracing(self):
+        weights = (5, 5, 10, 10)
+        b2b_tfm = Box2BoxTransform(weights=weights)
+
+        with torch.no_grad():
+            func = torch.jit.trace(b2b_tfm.apply_deltas, (torch.randn(10, 20), torch.randn(10, 4)))
+
+            o = func(torch.randn(10, 20), torch.randn(10, 4))
+            self.assertEqual(o.shape, (10, 20))
+            o = func(torch.randn(5, 20), torch.randn(5, 4))
+            self.assertEqual(o.shape, (5, 20))
 
 
 def random_rotated_boxes(mean_box, std_length, std_angle, N):

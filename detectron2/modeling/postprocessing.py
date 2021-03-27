@@ -1,4 +1,4 @@
-# Copyright (c) Facebook, Inc. and its affiliates. All Rights Reserved
+# Copyright (c) Facebook, Inc. and its affiliates.
 import torch
 from torch.nn import functional as F
 
@@ -7,7 +7,10 @@ from detectron2.structures import Instances
 from detectron2.utils.memory import retry_if_cuda_oom
 
 
-def detector_postprocess(results, output_height, output_width, mask_threshold=0.5):
+# perhaps should rename to "resize_instance"
+def detector_postprocess(
+    results: Instances, output_height: int, output_width: int, mask_threshold: float = 0.5
+):
     """
     Resize the output instances.
     The input images are often resized when entering an object detector.
@@ -26,30 +29,31 @@ def detector_postprocess(results, output_height, output_width, mask_threshold=0.
     Returns:
         Instances: the resized output from the model, based on the output resolution
     """
-
-    # Converts integer tensors to float temporaries
-    #   to ensure true division is performed when
-    #   computing scale_x and scale_y.
-    if isinstance(output_width, torch.Tensor):
-        output_width_tmp = output_width.float()
-    else:
-        output_width_tmp = output_width
-
+    # Change to 'if is_tracing' after PT1.7
     if isinstance(output_height, torch.Tensor):
+        # Converts integer tensors to float temporaries to ensure true
+        # division is performed when computing scale_x and scale_y.
+        output_width_tmp = output_width.float()
         output_height_tmp = output_height.float()
+        new_size = torch.stack([output_height, output_width])
     else:
+        new_size = (output_height, output_width)
+        output_width_tmp = output_width
         output_height_tmp = output_height
 
     scale_x, scale_y = (
         output_width_tmp / results.image_size[1],
         output_height_tmp / results.image_size[0],
     )
-    results = Instances((output_height, output_width), **results.get_fields())
+    results = Instances(new_size, **results.get_fields())
 
     if results.has("pred_boxes"):
         output_boxes = results.pred_boxes
     elif results.has("proposal_boxes"):
         output_boxes = results.proposal_boxes
+    else:
+        output_boxes = None
+    assert output_boxes is not None, "Predictions must contain boxes!"
 
     output_boxes.scale(scale_x, scale_y)
     output_boxes.clip(results.image_size)

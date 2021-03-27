@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# Copyright (c) Facebook, Inc. and its affiliates. All Rights Reserved
+# Copyright (c) Facebook, Inc. and its affiliates.
 
 """
 PointRend Training Script.
@@ -25,8 +25,7 @@ from detectron2.evaluation import (
     SemSegEvaluator,
     verify_results,
 )
-
-from point_rend import ColorAugSSDTransform, add_pointrend_config
+from detectron2.projects.point_rend import ColorAugSSDTransform, add_pointrend_config
 
 
 def build_sem_seg_train_aug(cfg):
@@ -71,15 +70,13 @@ class Trainer(DefaultTrainer):
         evaluator_list = []
         evaluator_type = MetadataCatalog.get(dataset_name).evaluator_type
         if evaluator_type == "lvis":
-            return LVISEvaluator(dataset_name, cfg, True, output_folder)
+            return LVISEvaluator(dataset_name, output_dir=output_folder)
         if evaluator_type == "coco":
-            return COCOEvaluator(dataset_name, cfg, True, output_folder)
+            return COCOEvaluator(dataset_name, output_dir=output_folder)
         if evaluator_type == "sem_seg":
             return SemSegEvaluator(
                 dataset_name,
                 distributed=True,
-                num_classes=cfg.MODEL.SEM_SEG_HEAD.NUM_CLASSES,
-                ignore_label=cfg.MODEL.SEM_SEG_HEAD.IGNORE_VALUE,
                 output_dir=output_folder,
             )
         if evaluator_type == "cityscapes_instance":

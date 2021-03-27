@@ -1,17 +1,17 @@
 # -*- coding: utf-8 -*-
-# Copyright (c) Facebook, Inc. and its affiliates. All Rights Reserved
+# Copyright (c) Facebook, Inc. and its affiliates.
 
 import copy
 import logging
 from typing import Any, Dict, Tuple
 import torch
-from fvcore.common.file_io import PathManager
 
 from detectron2.data import MetadataCatalog
 from detectron2.data import detection_utils as utils
 from detectron2.data import transforms as T
 from detectron2.layers import ROIAlign
 from detectron2.structures import BoxMode
+from detectron2.utils.file_io import PathManager
 
 from .structures import DensePoseDataRelative, DensePoseList, DensePoseTransformData
 

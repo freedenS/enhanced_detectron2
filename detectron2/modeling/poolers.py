@@ -1,6 +1,5 @@
-# Copyright (c) Facebook, Inc. and its affiliates. All Rights Reserved.
+# Copyright (c) Facebook, Inc. and its affiliates.
 import math
-import sys
 from typing import List
 import torch
 from torch import nn
@@ -60,8 +59,8 @@ def assign_boxes_to_levels(
 
 
 def _fmt_box_list(box_tensor, batch_index: int):
-    repeated_index = torch.full(
-        (len(box_tensor), 1), batch_index, dtype=box_tensor.dtype, device=box_tensor.device
+    repeated_index = torch.full_like(
+        box_tensor[:, :1], batch_index, dtype=box_tensor.dtype, device=box_tensor.device
     )
     return cat((repeated_index, box_tensor), dim=1)
 
@@ -117,7 +116,7 @@ class ROIPooler(nn.Module):
                 e.g., 14 x 14. If tuple or list is given, the length must be 2.
             scales (list[float]): The scale for each low-level pooling op relative to
                 the input image. For a feature map with stride s relative to the input
-                image, scale is defined as a 1 / s. The stride must be power of 2.
+                image, scale is defined as 1/s. The stride must be power of 2.
                 When there are multiple scales, they must form a pyramid, i.e. they must be
                 a monotically decreasing geometric sequence with a factor of 1/2.
             sampling_ratio (int): The `sampling_ratio` parameter for the ROIAlign op.
@@ -219,6 +218,10 @@ class ROIPooler(nn.Module):
         ), "unequal value, x[0] batch dim 0 is {}, but box_list has length {}".format(
             x[0].size(0), len(box_lists)
         )
+        if len(box_lists) == 0:
+            return torch.zeros(
+                (0, x[0].shape[1]) + self.output_size, device=x[0].device, dtype=x[0].dtype
+            )
 
         pooler_fmt_boxes = convert_boxes_to_pooler_format(box_lists)
 
@@ -229,7 +232,7 @@ class ROIPooler(nn.Module):
             box_lists, self.min_level, self.max_level, self.canonical_box_size, self.canonical_level
         )
 
-        num_boxes = len(pooler_fmt_boxes)
+        num_boxes = pooler_fmt_boxes.size(0)
         num_channels = x[0].shape[1]
         output_size = self.output_size[0]
 
@@ -241,6 +244,7 @@ class ROIPooler(nn.Module):
         for level, pooler in enumerate(self.level_poolers):
             inds = nonzero_tuple(level_assignments == level)[0]
             pooler_fmt_boxes_level = pooler_fmt_boxes[inds]
-            output[inds] = pooler(x[level], pooler_fmt_boxes_level)
+            # Use index_put_ instead of advance indexing, to avoid pytorch/issues/49852
+            output.index_put_((inds,), pooler(x[level], pooler_fmt_boxes_level))
 
         return output

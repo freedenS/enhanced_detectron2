@@ -1,6 +1,10 @@
 # -*- coding: utf-8 -*-
-# Copyright (c) Facebook, Inc. and its affiliates. All Rights Reserved
-# File: transform.py
+# Copyright (c) Facebook, Inc. and its affiliates.
+
+"""
+See "Data Augmentation" tutorial for an overview of the system:
+https://detectron2.readthedocs.io/tutorials/augmentation.html
+"""
 
 import numpy as np
 import torch
@@ -52,14 +56,21 @@ class ExtentTransform(Transform):
 
     def apply_image(self, img, interp=None):
         h, w = self.output_size
-        ret = Image.fromarray(img).transform(
+        if len(img.shape) > 2 and img.shape[2] == 1:
+            pil_image = Image.fromarray(img[:, :, 0], mode="L")
+        else:
+            pil_image = Image.fromarray(img)
+        pil_image = pil_image.transform(
             size=(w, h),
             method=Image.EXTENT,
             data=self.src_rect,
             resample=interp if interp else self.interp,
             fill=self.fill,
         )
-        return np.asarray(ret)
+        ret = np.asarray(pil_image)
+        if len(img.shape) > 2 and img.shape[2] == 1:
+            ret = np.expand_dims(ret, -1)
+        return ret
 
     def apply_coords(self, coords):
         # Transform image center from source coordinates into output coordinates
@@ -101,21 +112,35 @@ class ResizeTransform(Transform):
     def apply_image(self, img, interp=None):
         assert img.shape[:2] == (self.h, self.w)
         assert len(img.shape) <= 4
+        interp_method = interp if interp is not None else self.interp
 
         if img.dtype == np.uint8:
-            pil_image = Image.fromarray(img)
-            interp_method = interp if interp is not None else self.interp
+            if len(img.shape) > 2 and img.shape[2] == 1:
+                pil_image = Image.fromarray(img[:, :, 0], mode="L")
+            else:
+                pil_image = Image.fromarray(img)
             pil_image = pil_image.resize((self.new_w, self.new_h), interp_method)
             ret = np.asarray(pil_image)
+            if len(img.shape) > 2 and img.shape[2] == 1:
+                ret = np.expand_dims(ret, -1)
         else:
             # PIL only supports uint8
+            if any(x < 0 for x in img.strides):
+                img = np.ascontiguousarray(img)
             img = torch.from_numpy(img)
             shape = list(img.shape)
             shape_4d = shape[:2] + [1] * (4 - len(shape)) + shape[2:]
             img = img.view(shape_4d).permute(2, 3, 0, 1)  # hw(c) -> nchw
-            _PIL_RESIZE_TO_INTERPOLATE_MODE = {Image.BILINEAR: "bilinear", Image.BICUBIC: "bicubic"}
-            mode = _PIL_RESIZE_TO_INTERPOLATE_MODE[self.interp]
-            img = F.interpolate(img, (self.new_h, self.new_w), mode=mode, align_corners=False)
+            _PIL_RESIZE_TO_INTERPOLATE_MODE = {
+                Image.NEAREST: "nearest",
+                Image.BILINEAR: "bilinear",
+                Image.BICUBIC: "bicubic",
+            }
+            mode = _PIL_RESIZE_TO_INTERPOLATE_MODE[interp_method]
+            align_corners = None if mode == "nearest" else False
+            img = F.interpolate(
+                img, (self.new_h, self.new_w), mode=mode, align_corners=align_corners
+            )
             shape[:2] = (self.new_h, self.new_w)
             ret = img.permute(2, 3, 0, 1).view(shape).numpy()  # nchw -> hw(c)
 
@@ -246,6 +271,9 @@ class ColorTransform(Transform):
 
     def apply_coords(self, coords):
         return coords
+
+    def inverse(self):
+        return NoOpTransform()
 
     def apply_segmentation(self, segmentation):
         return segmentation

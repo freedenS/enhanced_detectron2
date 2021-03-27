@@ -1,14 +1,17 @@
 #!/usr/bin/env python
-# Copyright (c) Facebook, Inc. and its affiliates. All Rights Reserved
+# Copyright (c) Facebook, Inc. and its affiliates.
 
 
 import os
 import tempfile
 import unittest
 import torch
+from omegaconf import OmegaConf
 
+from detectron2 import model_zoo
 from detectron2.config import configurable, downgrade_config, get_cfg, upgrade_config
 from detectron2.layers import ShapeSpec
+from detectron2.modeling import build_model
 
 _V0_CFG = """
 MODEL:
@@ -140,6 +143,11 @@ class _TestClassD(_TestClassA):
     # Test whether input_shape will be forwarded to __init__
 
 
+@configurable(from_config=lambda cfg, arg2: {"arg1": cfg.ARG1, "arg2": arg2, "arg3": cfg.ARG3})
+def _test_func(arg1, arg2=2, arg3=3, arg4=4):
+    return arg1, arg2, arg3, arg4
+
+
 class TestConfigurable(unittest.TestCase):
     def testInitWithArgs(self):
         _ = _TestClassA(arg1=1, arg2=2, arg3=3)
@@ -238,3 +246,23 @@ class TestConfigurable(unittest.TestCase):
 
         with self.assertRaises(TypeError):
             _ = _BadClass3(get_cfg())
+
+    def testFuncWithCfg(self):
+        cfg = get_cfg()
+        cfg.ARG1 = 10
+        cfg.ARG3 = 30
+
+        self.assertEqual(_test_func(1), (1, 2, 3, 4))
+        with self.assertRaises(TypeError):
+            _test_func(cfg)
+        self.assertEqual(_test_func(cfg, arg2=2), (10, 2, 30, 4))
+        self.assertEqual(_test_func(cfg, arg1=100, arg2=20), (100, 20, 30, 4))
+        self.assertEqual(_test_func(cfg, arg1=100, arg2=20, arg4=40), (100, 20, 30, 40))
+
+    def testOmegaConf(self):
+        cfg = model_zoo.get_config("COCO-InstanceSegmentation/mask_rcnn_R_50_FPN_1x.yaml")
+        cfg = OmegaConf.create(cfg.dump())
+        if not torch.cuda.is_available():
+            cfg.MODEL.DEVICE = "cpu"
+        # test that a model can be built with omegaconf config as well
+        build_model(cfg)

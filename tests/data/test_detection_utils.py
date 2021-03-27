@@ -1,15 +1,15 @@
-# Copyright (c) Facebook, Inc. and its affiliates. All Rights Reserved.
+# Copyright (c) Facebook, Inc. and its affiliates.
 
 import copy
 import numpy as np
 import os
 import unittest
 import pycocotools.mask as mask_util
-from fvcore.common.file_io import PathManager
 
 from detectron2.data import MetadataCatalog, detection_utils
 from detectron2.data import transforms as T
 from detectron2.structures import BitMasks, BoxMode
+from detectron2.utils.file_io import PathManager
 
 
 class TestTransformAnnotations(unittest.TestCase):
@@ -150,6 +150,14 @@ class TestTransformAnnotations(unittest.TestCase):
         self.assertEqual(sem_seg.dtype, np.uint8)
         self.assertEqual(sem_seg.max(), 32)
         self.assertEqual(sem_seg.min(), 1)
+
+    def test_read_exif_orientation(self):
+        # https://github.com/recurser/exif-orientation-examples/raw/master/Landscape_5.jpg
+        URL = "detectron2://assets/Landscape_5.jpg"
+        img = detection_utils.read_image(URL, "RGB")
+        self.assertEqual(img.ndim, 3)
+        self.assertEqual(img.dtype, np.uint8)
+        self.assertEqual(img.shape, (1200, 1800, 3))  # check that shape is not transposed
 
 
 if __name__ == "__main__":

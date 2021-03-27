@@ -1,5 +1,5 @@
 #!/bin/bash -e
-# Copyright (c) Facebook, Inc. and its affiliates. All Rights Reserved
+# Copyright (c) Facebook, Inc. and its affiliates.
 
 
 root=$1
@@ -14,7 +14,7 @@ export LC_ALL=C  # reproducible sort
 index=$root/index.html
 
 cd "$root"
-for cu in cpu cu92 cu100 cu101 cu102; do
+for cu in cpu cu92 cu100 cu101 cu102 cu110 cu111; do
   cd "$root/$cu"
   echo "Creating $PWD/index.html ..."
   # First sort by torch version, then stable sort by d2 version with unique.

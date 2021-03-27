@@ -15,6 +15,8 @@ of support or stability as detectron2.
 + [PointRend: Image Segmentation as Rendering](PointRend)
 + [Momentum Contrast for Unsupervised Visual Representation Learning](https://github.com/facebookresearch/moco/tree/master/detection)
 + [DETR: End-to-End Object Detection with Transformers](https://github.com/facebookresearch/detr/tree/master/d2)
++ [Panoptic-DeepLab: A Simple, Strong, and Fast Baseline for Bottom-Up Panoptic Segmentation](Panoptic-DeepLab)
++ [D2Go (Detectron2Go)](https://github.com/facebookresearch/d2go), an end-to-end production system for training and deployment for mobile platforms.
 
 
 ## External Projects
@@ -35,3 +37,4 @@ External projects in the community that use detectron2:
 + [CenterMask](https://github.com/youngwanLEE/centermask2)
 + [Res2Net backbones](https://github.com/Res2Net/Res2Net-detectron2)
 + [VoVNet backbones](https://github.com/youngwanLEE/vovnet-detectron2)
++ [FsDet](https://github.com/ucbdrive/few-shot-object-detection), Few-Shot Object Detection.

@@ -1,26 +1,18 @@
 # -*- coding: utf-8 -*-
-# Copyright (c) Facebook, Inc. and its affiliates. All Rights Reserved
+# Copyright (c) Facebook, Inc. and its affiliates.
 
-import contextlib
 import logging
 import numpy as np
 import time
 import weakref
+from typing import Dict, List, Optional
 import torch
+from torch.nn.parallel import DataParallel, DistributedDataParallel
 
 import detectron2.utils.comm as comm
-from detectron2.utils.events import EventStorage
+from detectron2.utils.events import EventStorage, get_event_storage
 
-__all__ = ["HookBase", "TrainerBase", "SimpleTrainer"]
-
-
-try:
-    _nullcontext = contextlib.nullcontext  # python 3.7+
-except AttributeError:
-
-    @contextlib.contextmanager
-    def _nullcontext(enter_result=None):
-        yield enter_result
+__all__ = ["HookBase", "TrainerBase", "SimpleTrainer", "AMPTrainer"]
 
 
 class HookBase:
@@ -35,11 +27,13 @@ class HookBase:
             hook.before_step()
             trainer.run_step()
             hook.after_step()
+        iter += 1
         hook.after_train()
 
     Notes:
-        1. In the hook method, users can access `self.trainer` to access more
-           properties about the context (e.g., current iteration).
+        1. In the hook method, users can access ``self.trainer`` to access more
+           properties about the context (e.g., model, current iteration, or config
+           if using :class:`DefaultTrainer`).
 
         2. A hook that does something in :meth:`before_step` can often be
            implemented equivalently in :meth:`after_step`.
@@ -52,8 +46,8 @@ class HookBase:
            function properly.
 
     Attributes:
-        trainer: A weak reference to the trainer object. Set by the trainer when the hook is
-            registered.
+        trainer (TrainerBase): A weak reference to the trainer object. Set by the trainer
+            when the hook is registered.
     """
 
     def before_train(self):
@@ -100,10 +94,14 @@ class TrainerBase:
         storage(EventStorage): An EventStorage that's opened during the course of training.
     """
 
-    def __init__(self):
-        self._hooks = []
+    def __init__(self) -> None:
+        self._hooks: List[HookBase] = []
+        self.iter: int
+        self.start_iter: int
+        self.max_iter: int
+        self.storage: EventStorage
 
-    def register_hooks(self, hooks):
+    def register_hooks(self, hooks: List[Optional[HookBase]]) -> None:
         """
         Register hooks to the trainer. The hooks are executed in the order
         they are registered.
@@ -139,6 +137,10 @@ class TrainerBase:
                     self.before_step()
                     self.run_step()
                     self.after_step()
+                # self.iter == max_iter can be used by `after_train` to
+                # tell whether the training successfully finished or failed
+                # due to exceptions.
+                self.iter += 1
             except Exception:
                 logger.exception("Exception during training:")
                 raise
@@ -150,18 +152,21 @@ class TrainerBase:
             h.before_train()
 
     def after_train(self):
+        self.storage.iter = self.iter
         for h in self._hooks:
             h.after_train()
 
     def before_step(self):
+        # Maintain the invariant that storage.iter == trainer.iter
+        # for the entire execution of each step
+        self.storage.iter = self.iter
+
         for h in self._hooks:
             h.before_step()
 
     def after_step(self):
         for h in self._hooks:
             h.after_step()
-        # this guarantees, that in each hook's after_step, storage.iter == trainer.iter
-        self.storage.step()
 
     def run_step(self):
         raise NotImplementedError
@@ -170,7 +175,8 @@ class TrainerBase:
 class SimpleTrainer(TrainerBase):
     """
     A simple trainer for the most common type of task:
-    single-cost single-optimizer single-data-source iterative optimization.
+    single-cost single-optimizer single-data-source iterative optimization,
+    optionally using data-parallelism.
     It assumes that every step, you:
 
     1. Compute the loss with a data from the data_loader.
@@ -233,14 +239,7 @@ class SimpleTrainer(TrainerBase):
         self.optimizer.zero_grad()
         losses.backward()
 
-        # use a new stream so the ops don't wait for DDP
-        with torch.cuda.stream(
-            torch.cuda.Stream()
-        ) if losses.device.type == "cuda" else _nullcontext():
-            metrics_dict = loss_dict
-            metrics_dict["data_time"] = data_time
-            self._write_metrics(metrics_dict)
-            self._detect_anomaly(losses, loss_dict)
+        self._write_metrics(loss_dict, data_time)
 
         """
         If you need gradient clipping/scaling or other processing, you can
@@ -249,41 +248,94 @@ class SimpleTrainer(TrainerBase):
         """
         self.optimizer.step()
 
-    def _detect_anomaly(self, losses, loss_dict):
-        if not torch.isfinite(losses).all():
-            raise FloatingPointError(
-                "Loss became infinite or NaN at iteration={}!\nloss_dict = {}".format(
-                    self.iter, loss_dict
-                )
-            )
-
-    def _write_metrics(self, metrics_dict: dict):
+    def _write_metrics(
+        self,
+        loss_dict: Dict[str, torch.Tensor],
+        data_time: float,
+        prefix: str = "",
+    ):
         """
         Args:
-            metrics_dict (dict): dict of scalar metrics
+            loss_dict (dict): dict of scalar losses
+            data_time (float): time taken by the dataloader iteration
         """
-        metrics_dict = {
-            k: v.detach().cpu().item() if isinstance(v, torch.Tensor) else float(v)
-            for k, v in metrics_dict.items()
-        }
-        # gather metrics among all workers for logging
+        metrics_dict = {k: v.detach().cpu().item() for k, v in loss_dict.items()}
+        metrics_dict["data_time"] = data_time
+
+        # Gather metrics among all workers for logging
         # This assumes we do DDP-style training, which is currently the only
         # supported method in detectron2.
         all_metrics_dict = comm.gather(metrics_dict)
 
         if comm.is_main_process():
-            if "data_time" in all_metrics_dict[0]:
-                # data_time among workers can have high variance. The actual latency
-                # caused by data_time is the maximum among workers.
-                data_time = np.max([x.pop("data_time") for x in all_metrics_dict])
-                self.storage.put_scalar("data_time", data_time)
+            storage = get_event_storage()
+
+            # data_time among workers can have high variance. The actual latency
+            # caused by data_time is the maximum among workers.
+            data_time = np.max([x.pop("data_time") for x in all_metrics_dict])
+            storage.put_scalar("data_time", data_time)
 
             # average the rest metrics
             metrics_dict = {
                 k: np.mean([x[k] for x in all_metrics_dict]) for k in all_metrics_dict[0].keys()
             }
-            total_losses_reduced = sum(loss for loss in metrics_dict.values())
+            total_losses_reduced = sum(metrics_dict.values())
+            if not np.isfinite(total_losses_reduced):
+                raise FloatingPointError(
+                    f"Loss became infinite or NaN at iteration={self.iter}!\n"
+                    f"loss_dict = {metrics_dict}"
+                )
 
-            self.storage.put_scalar("total_loss", total_losses_reduced)
+            storage.put_scalar("{}total_loss".format(prefix), total_losses_reduced)
             if len(metrics_dict) > 1:
-                self.storage.put_scalars(**metrics_dict)
+                storage.put_scalars(**metrics_dict)
+
+
+class AMPTrainer(SimpleTrainer):
+    """
+    Like :class:`SimpleTrainer`, but uses PyTorch's native automatic mixed precision
+    in the training loop.
+    """
+
+    def __init__(self, model, data_loader, optimizer, grad_scaler=None):
+        """
+        Args:
+            model, data_loader, optimizer: same as in :class:`SimpleTrainer`.
+            grad_scaler: torch GradScaler to automatically scale gradients.
+        """
+        unsupported = "AMPTrainer does not support single-process multi-device training!"
+        if isinstance(model, DistributedDataParallel):
+            assert not (model.device_ids and len(model.device_ids) > 1), unsupported
+        assert not isinstance(model, DataParallel), unsupported
+
+        super().__init__(model, data_loader, optimizer)
+
+        if grad_scaler is None:
+            from torch.cuda.amp import GradScaler
+
+            grad_scaler = GradScaler()
+        self.grad_scaler = grad_scaler
+
+    def run_step(self):
+        """
+        Implement the AMP training logic.
+        """
+        assert self.model.training, "[AMPTrainer] model was changed to eval mode!"
+        assert torch.cuda.is_available(), "[AMPTrainer] CUDA is required for AMP training!"
+        from torch.cuda.amp import autocast
+
+        start = time.perf_counter()
+        data = next(self._data_loader_iter)
+        data_time = time.perf_counter() - start
+
+        with autocast():
+            loss_dict = self.model(data)
+            losses = sum(loss_dict.values())
+
+        self.optimizer.zero_grad()
+        self.grad_scaler.scale(losses).backward()
+
+        self._write_metrics(loss_dict, data_time)
+
+        self.grad_scaler.step(self.optimizer)
+        self.grad_scaler.update()

@@ -1,4 +1,4 @@
-# Copyright (c) Facebook, Inc. and its affiliates. All Rights Reserved
+# Copyright (c) Facebook, Inc. and its affiliates.
 from detectron2.layers import ShapeSpec
 
 from .anchor_generator import build_anchor_generator, ANCHOR_GENERATOR_REGISTRY
@@ -39,6 +39,7 @@ from .roi_heads import (
     StandardROIHeads,
     BaseMaskRCNNHead,
     BaseKeypointRCNNHead,
+    FastRCNNOutputLayers,
     build_box_head,
     build_keypoint_head,
     build_mask_head,

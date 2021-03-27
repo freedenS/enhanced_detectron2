@@ -1,4 +1,4 @@
-# Copyright (c) Facebook, Inc. and its affiliates. All Rights Reserved
+# Copyright (c) Facebook, Inc. and its affiliates.
 import json
 import numpy as np
 import os
@@ -94,6 +94,8 @@ class TestRLEToJson(unittest.TestCase):
         anno = dicts[0]["annotations"][0]
         loaded_mask = mask_util.decode(anno["segmentation"])
         self.assertTrue(np.array_equal(loaded_mask, mask))
+        DatasetCatalog.pop("test_dataset")
+        MetadataCatalog.pop("test_dataset")
 
     def test_uncompressed_RLE(self):
         mask = make_mask()
@@ -101,3 +103,37 @@ class TestRLEToJson(unittest.TestCase):
         uncompressed = uncompressed_rle(mask)
         compressed = mask_util.frPyObjects(uncompressed, *rle["size"])
         self.assertEqual(rle, compressed)
+
+
+class TestConvertCOCO(unittest.TestCase):
+    @staticmethod
+    def generate_data():
+        record = {
+            "file_name": "test",
+            "image_id": 0,
+            "height": 100,
+            "width": 100,
+            "annotations": [
+                {
+                    "bbox": [10, 10, 10, 10, 5],
+                    "bbox_mode": BoxMode.XYWHA_ABS,
+                    "category_id": 0,
+                    "iscrowd": 0,
+                },
+                {
+                    "bbox": [15, 15, 3, 3],
+                    "bbox_mode": BoxMode.XYXY_ABS,
+                    "category_id": 0,
+                    "iscrowd": 0,
+                },
+            ],
+        }
+
+        return [record]
+
+    def test_convert_to_coco(self):
+        DatasetCatalog.register("test_dataset", lambda: TestConvertCOCO.generate_data())
+        MetadataCatalog.get("test_dataset").set(thing_classes=["test_label"])
+        convert_to_coco_dict("test_dataset")
+        DatasetCatalog.pop("test_dataset")
+        MetadataCatalog.pop("test_dataset")

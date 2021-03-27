@@ -15,7 +15,7 @@ which is a challenge for any research engineering project of a significant size:
 In detectron2, there are two types of interfaces that address this tension together:
 
 1. Functions and classes that take a config (`cfg`) argument
-   (sometimes with only a few extra arguments).
+   (sometimes with few extra arguments).
 
    Such functions and classes implement
    the "standard default" behavior: it will read what it needs from the
@@ -33,12 +33,28 @@ In detectron2, there are two types of interfaces that address this tension toget
    When you need to implement something not supported by the "standard defaults"
    included in detectron2, these well-defined components can be reused.
 
-3. (experimental) A few classes are implemented with the
-   [@configurable](../../modules/config.html#detectron2.config.configurable)
-   decorator - they can be called with either a config, or with explicit arguments.
-   Their explicit argument interfaces are currently __experimental__ and subject to change.
+3. A few functions and classes are implemented with the
+   [@configurable](../modules/config.html#detectron2.config.configurable)
+   decorator - they can be called with either a config, or with explicit arguments, or a mixture of both.
+   Their explicit argument interfaces are currently experimental.
 
-   As an example, a Mask R-CNN model can be built like this:
+   As an example, a Mask R-CNN model can be built in the following ways:
+
+   1. Config-only:
+      ```python
+      # load proper config file, then
+      model = build_model(cfg)
+      ```
+
+   2. Mixture of config and additional argument overrides:
+      ```python
+      model = GeneralizedRCNN(
+        cfg,
+        roi_heads=StandardROIHeads(cfg, batch_size_per_image=666),
+        pixel_std=[57.0, 57.0, 57.0])
+      ```
+
+   3. Full explicit arguments:
    <details>
    <summary>
    (click to expand)
@@ -48,21 +64,8 @@ In detectron2, there are two types of interfaces that address this tension toget
    model = GeneralizedRCNN(
        backbone=FPN(
            ResNet(
-               BasicStem(3, 64),
-               [
-                   ResNet.make_stage(
-                       BottleneckBlock,
-                       n,
-                       s,
-                       in_channels=i,
-                       bottleneck_channels=o // 4,
-                       out_channels=o,
-                       stride_in_1x1=True,
-                   )
-                   for (n, s, i, o) in zip(
-                       [3, 4, 6, 3], [1, 2, 2, 2], [64, 256, 512, 1024], [256, 512, 1024, 2048]
-                   )
-               ],
+               BasicStem(3, 64, norm="FrozenBN"),
+               ResNet.make_default_stages(50, stride_in_1x1=True, norm="FrozenBN"),
                out_features=["res2", "res3", "res4", "res5"],
            ).freeze(2),
            ["res2", "res3", "res4", "res5"],
@@ -116,7 +119,7 @@ In detectron2, there are two types of interfaces that address this tension toget
    )
    ```
 
-  </details>
+   </details>
 
 
 If you only need the standard behavior, the [Beginner's Tutorial](./getting_started.md)

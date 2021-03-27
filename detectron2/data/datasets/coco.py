@@ -1,4 +1,4 @@
-# Copyright (c) Facebook, Inc. and its affiliates. All Rights Reserved
+# Copyright (c) Facebook, Inc. and its affiliates.
 import contextlib
 import datetime
 import io
@@ -6,12 +6,14 @@ import json
 import logging
 import numpy as np
 import os
+import shutil
 import pycocotools.mask as mask_util
-from fvcore.common.file_io import PathManager, file_lock
 from fvcore.common.timer import Timer
+from iopath.common.file_io import file_lock
 from PIL import Image
 
-from detectron2.structures import Boxes, BoxMode, PolygonMasks
+from detectron2.structures import Boxes, BoxMode, PolygonMasks, RotatedBoxes
+from detectron2.utils.file_io import PathManager
 
 from .. import DatasetCatalog, MetadataCatalog
 
@@ -22,7 +24,7 @@ This file contains functions to parse COCO-format annotations into dicts in "Det
 
 logger = logging.getLogger(__name__)
 
-__all__ = ["load_coco_json", "load_sem_seg", "convert_to_coco_json"]
+__all__ = ["load_coco_json", "load_sem_seg", "convert_to_coco_json", "register_coco_instances"]
 
 
 def load_coco_json(json_file, image_root, dataset_name=None, extra_annotation_keys=None):
@@ -34,17 +36,26 @@ def load_coco_json(json_file, image_root, dataset_name=None, extra_annotation_ke
     Args:
         json_file (str): full path to the json file in COCO instances annotation format.
         image_root (str or path-like): the directory where the images in this json file exists.
-        dataset_name (str): the name of the dataset (e.g., coco_2017_train).
-            If provided, this function will also put "thing_classes" into
-            the metadata associated with this dataset.
+        dataset_name (str or None): the name of the dataset (e.g., coco_2017_train).
+            When provided, this function will also do the following:
+
+            * Put "thing_classes" into the metadata associated with this dataset.
+            * Map the category ids into a contiguous range (needed by standard dataset format),
+              and add "thing_dataset_id_to_contiguous_id" to the metadata associated
+              with this dataset.
+
+            This option should usually be provided, unless users need to load
+            the original json content and apply more processing manually.
         extra_annotation_keys (list[str]): list of per-annotation keys that should also be
             loaded into the dataset dict (besides "iscrowd", "bbox", "keypoints",
             "category_id", "segmentation"). The values for these keys will be returned as-is.
             For example, the densepose annotations are loaded in this way.
 
     Returns:
-        list[dict]: a list of dicts in Detectron2 standard dataset dicts format. (See
-        `Using Custom Datasets </tutorials/datasets.html>`_ )
+        list[dict]: a list of dicts in Detectron2 standard dataset dicts format (See
+        `Using Custom Datasets </tutorials/datasets.html>`_ ) when `dataset_name` is not None.
+        If `dataset_name` is None, the returned `category_ids` may be
+        incontiguous and may not conform to the Detectron2 standard format.
 
     Notes:
         1. This function does not read the image files.
@@ -113,6 +124,13 @@ Category ids in annotations are not in [1, #categories]! We'll apply a mapping f
     #   'id': 42986},
     #  ...]
     anns = [coco_api.imgToAnns[img_id] for img_id in img_ids]
+    total_num_valid_anns = sum([len(x) for x in anns])
+    total_num_anns = len(coco_api.anns)
+    if total_num_valid_anns < total_num_anns:
+        logger.warning(
+            f"{json_file} contains {total_num_anns} annotations, but only "
+            f"{total_num_valid_anns} of them match to images in the file."
+        )
 
     if "minival" not in json_file:
         # The popular valminusminival & minival annotations for COCO2014 contain this bug.
@@ -124,7 +142,6 @@ Category ids in annotations are not in [1, #categories]! We'll apply a mapping f
         )
 
     imgs_anns = list(zip(imgs, anns))
-
     logger.info("Loaded {} images in COCO format from {}".format(len(imgs_anns), json_file))
 
     dataset_dicts = []
@@ -182,7 +199,14 @@ Category ids in annotations are not in [1, #categories]! We'll apply a mapping f
 
             obj["bbox_mode"] = BoxMode.XYWH_ABS
             if id_map:
-                obj["category_id"] = id_map[obj["category_id"]]
+                annotation_category_id = obj["category_id"]
+                try:
+                    obj["category_id"] = id_map[annotation_category_id]
+                except KeyError as e:
+                    raise KeyError(
+                        f"Encountered category_id={annotation_category_id} "
+                        "but this id does not exist in 'categories' of the json file."
+                    ) from e
             objs.append(obj)
         record["annotations"] = objs
         dataset_dicts.append(record)
@@ -316,9 +340,9 @@ def convert_to_coco_dict(dataset_name):
     for image_id, image_dict in enumerate(dataset_dicts):
         coco_image = {
             "id": image_dict.get("image_id", image_id),
-            "width": image_dict["width"],
-            "height": image_dict["height"],
-            "file_name": image_dict["file_name"],
+            "width": int(image_dict["width"]),
+            "height": int(image_dict["height"]),
+            "file_name": str(image_dict["file_name"]),
         }
         coco_images.append(coco_image)
 
@@ -327,10 +351,11 @@ def convert_to_coco_dict(dataset_name):
             # create a new dict with only COCO fields
             coco_annotation = {}
 
-            # COCO requirement: XYWH box format
+            # COCO requirement: XYWH box format for axis-align and XYWHA for rotated
             bbox = annotation["bbox"]
-            bbox_mode = annotation["bbox_mode"]
-            bbox = BoxMode.convert(bbox, bbox_mode, BoxMode.XYWH_ABS)
+            from_bbox_mode = annotation["bbox_mode"]
+            to_bbox_mode = BoxMode.XYWH_ABS if len(bbox) == 4 else BoxMode.XYWHA_ABS
+            bbox = BoxMode.convert(bbox, from_bbox_mode, to_bbox_mode)
 
             # COCO requirement: instance area
             if "segmentation" in annotation:
@@ -346,8 +371,11 @@ def convert_to_coco_dict(dataset_name):
                     raise TypeError(f"Unknown segmentation type {type(segmentation)}!")
             else:
                 # Computing areas using bounding boxes
-                bbox_xy = BoxMode.convert(bbox, BoxMode.XYWH_ABS, BoxMode.XYXY_ABS)
-                area = Boxes([bbox_xy]).area()[0].item()
+                if to_bbox_mode == BoxMode.XYWH_ABS:
+                    bbox_xy = BoxMode.convert(bbox, to_bbox_mode, BoxMode.XYXY_ABS)
+                    area = Boxes([bbox_xy]).area()[0].item()
+                else:
+                    area = RotatedBoxes([bbox]).area()[0].item()
 
             if "keypoints" in annotation:
                 keypoints = annotation["keypoints"]  # list[int]
@@ -370,8 +398,8 @@ def convert_to_coco_dict(dataset_name):
             coco_annotation["image_id"] = coco_image["id"]
             coco_annotation["bbox"] = [round(float(x), 3) for x in bbox]
             coco_annotation["area"] = float(area)
-            coco_annotation["iscrowd"] = annotation.get("iscrowd", 0)
-            coco_annotation["category_id"] = reverse_id_mapper(annotation["category_id"])
+            coco_annotation["iscrowd"] = int(annotation.get("iscrowd", 0))
+            coco_annotation["category_id"] = int(reverse_id_mapper(annotation["category_id"]))
 
             # Add optional fields
             if "keypoints" in annotation:
@@ -431,8 +459,40 @@ def convert_to_coco_json(dataset_name, output_file, allow_cached=True):
             coco_dict = convert_to_coco_dict(dataset_name)
 
             logger.info(f"Caching COCO format annotations at '{output_file}' ...")
-            with PathManager.open(output_file, "w") as f:
+            tmp_file = output_file + ".tmp"
+            with PathManager.open(tmp_file, "w") as f:
                 json.dump(coco_dict, f)
+            shutil.move(tmp_file, output_file)
+
+
+def register_coco_instances(name, metadata, json_file, image_root):
+    """
+    Register a dataset in COCO's json annotation format for
+    instance detection, instance segmentation and keypoint detection.
+    (i.e., Type 1 and 2 in http://cocodataset.org/#format-data.
+    `instances*.json` and `person_keypoints*.json` in the dataset).
+
+    This is an example of how to register a new dataset.
+    You can do something similar to this function, to register new datasets.
+
+    Args:
+        name (str): the name that identifies a dataset, e.g. "coco_2014_train".
+        metadata (dict): extra metadata associated with this dataset.  You can
+            leave it as an empty dict.
+        json_file (str): path to the json instance annotation file.
+        image_root (str or path-like): directory which contains all the images.
+    """
+    assert isinstance(name, str), name
+    assert isinstance(json_file, (str, os.PathLike)), json_file
+    assert isinstance(image_root, (str, os.PathLike)), image_root
+    # 1. register a function which returns dicts
+    DatasetCatalog.register(name, lambda: load_coco_json(json_file, image_root, name))
+
+    # 2. Optionally, add metadata about this dataset,
+    # since they might be useful in evaluation, visualization or logging
+    MetadataCatalog.get(name).set(
+        json_file=json_file, image_root=image_root, evaluator_type="coco", **metadata
+    )
 
 
 if __name__ == "__main__":

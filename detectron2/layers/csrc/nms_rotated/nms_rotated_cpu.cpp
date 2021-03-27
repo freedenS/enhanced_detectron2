@@ -1,4 +1,4 @@
-// Copyright (c) Facebook, Inc. and its affiliates. All Rights Reserved
+// Copyright (c) Facebook, Inc. and its affiliates.
 #include "../box_iou_rotated/box_iou_rotated_utils.h"
 #include "nms_rotated.h"
 
@@ -8,7 +8,7 @@ template <typename scalar_t>
 at::Tensor nms_rotated_cpu_kernel(
     const at::Tensor& dets,
     const at::Tensor& scores,
-    const float iou_threshold) {
+    const double iou_threshold) {
   // nms_rotated_cpu_kernel is modified from torchvision's nms_cpu_kernel,
   // however, the code in this function is much shorter because
   // we delegate the IoU computation for rotated boxes to
@@ -63,7 +63,7 @@ at::Tensor nms_rotated_cpu(
     // input must be contiguous
     const at::Tensor& dets,
     const at::Tensor& scores,
-    const float iou_threshold) {
+    const double iou_threshold) {
   auto result = at::empty({0}, dets.options());
 
   AT_DISPATCH_FLOATING_TYPES(dets.scalar_type(), "nms_rotated", [&] {

@@ -1,8 +1,7 @@
-# Copyright (c) Facebook, Inc. and its affiliates. All Rights Reserved
+# Copyright (c) Facebook, Inc. and its affiliates.
 from typing import Dict, List, Optional, Tuple, Union
 import torch
 import torch.nn.functional as F
-from fvcore.nn import giou_loss, smooth_l1_loss
 from torch import nn
 
 from detectron2.config import configurable
@@ -13,7 +12,7 @@ from detectron2.utils.memory import retry_if_cuda_oom
 from detectron2.utils.registry import Registry
 
 from ..anchor_generator import build_anchor_generator
-from ..box_regression import Box2BoxTransform
+from ..box_regression import Box2BoxTransform, _dense_box_regression_loss
 from ..matcher import Matcher
 from ..sampling import subsample_labels
 from .build import PROPOSAL_GENERATOR_REGISTRY
@@ -364,26 +363,15 @@ class RPN(nn.Module):
         storage.put_scalar("rpn/num_pos_anchors", num_pos_anchors / num_images)
         storage.put_scalar("rpn/num_neg_anchors", num_neg_anchors / num_images)
 
-        if self.box_reg_loss_type == "smooth_l1":
-            anchors = type(anchors[0]).cat(anchors).tensor  # Ax(4 or 5)
-            gt_anchor_deltas = [self.box2box_transform.get_deltas(anchors, k) for k in gt_boxes]
-            gt_anchor_deltas = torch.stack(gt_anchor_deltas)  # (N, sum(Hi*Wi*Ai), 4 or 5)
-            localization_loss = smooth_l1_loss(
-                cat(pred_anchor_deltas, dim=1)[pos_mask],
-                gt_anchor_deltas[pos_mask],
-                self.smooth_l1_beta,
-                reduction="sum",
-            )
-        elif self.box_reg_loss_type == "giou":
-            pred_proposals = self._decode_proposals(anchors, pred_anchor_deltas)
-            pred_proposals = cat(pred_proposals, dim=1)
-            pred_proposals = pred_proposals.view(-1, pred_proposals.shape[-1])
-            pos_mask = pos_mask.view(-1)
-            localization_loss = giou_loss(
-                pred_proposals[pos_mask], cat(gt_boxes)[pos_mask], reduction="sum"
-            )
-        else:
-            raise ValueError(f"Invalid rpn box reg loss type '{self.box_reg_loss_type}'")
+        localization_loss = _dense_box_regression_loss(
+            anchors,
+            self.box2box_transform,
+            pred_anchor_deltas,
+            gt_boxes,
+            pos_mask,
+            box_reg_loss_type=self.box_reg_loss_type,
+            smooth_l1_beta=self.smooth_l1_beta,
+        )
 
         valid_mask = gt_labels >= 0
         objectness_loss = F.binary_cross_entropy_with_logits(
@@ -450,8 +438,6 @@ class RPN(nn.Module):
         )
         return proposals, losses
 
-    # TODO: use torch.no_grad when torchscript supports it.
-    # https://github.com/pytorch/pytorch/pull/41371
     def predict_proposals(
         self,
         anchors: List[Boxes],
@@ -468,23 +454,21 @@ class RPN(nn.Module):
                 stores post_nms_topk object proposals for image i, sorted by their
                 objectness score in descending order.
         """
-        # The proposals are treated as fixed for approximate joint training with roi heads.
+        # The proposals are treated as fixed for joint training with roi heads.
         # This approach ignores the derivative w.r.t. the proposal boxes’ coordinates that
-        # are also network responses, so is approximate.
-        pred_objectness_logits = [t.detach() for t in pred_objectness_logits]
-        pred_anchor_deltas = [t.detach() for t in pred_anchor_deltas]
-        pred_proposals = self._decode_proposals(anchors, pred_anchor_deltas)
-        return find_top_rpn_proposals(
-            pred_proposals,
-            pred_objectness_logits,
-            image_sizes,
-            self.nms_thresh,
-            # https://github.com/pytorch/pytorch/issues/41449
-            self.pre_nms_topk[int(self.training)],
-            self.post_nms_topk[int(self.training)],
-            self.min_box_size,
-            self.training,
-        )
+        # are also network responses.
+        with torch.no_grad():
+            pred_proposals = self._decode_proposals(anchors, pred_anchor_deltas)
+            return find_top_rpn_proposals(
+                pred_proposals,
+                pred_objectness_logits,
+                image_sizes,
+                self.nms_thresh,
+                self.pre_nms_topk[self.training],
+                self.post_nms_topk[self.training],
+                self.min_box_size,
+                self.training,
+            )
 
     def _decode_proposals(self, anchors: List[Boxes], pred_anchor_deltas: List[torch.Tensor]):
         """

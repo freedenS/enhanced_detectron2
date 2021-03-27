@@ -1,4 +1,4 @@
-# Copyright (c) Facebook, Inc. and its affiliates. All Rights Reserved
+# Copyright (c) Facebook, Inc. and its affiliates.
 from typing import List
 import torch
 from torch import nn
@@ -96,7 +96,7 @@ def keypoint_rcnn_loss(pred_keypoint_logits, instances, normalizer):
     return keypoint_loss
 
 
-def keypoint_rcnn_inference(pred_keypoint_logits, pred_instances):
+def keypoint_rcnn_inference(pred_keypoint_logits: torch.Tensor, pred_instances: List[Instances]):
     """
     Post process each predicted keypoint heatmap in `pred_keypoint_logits` into (x, y, score)
         and add it to the `pred_instances` as a `pred_keypoints` field.
@@ -108,26 +108,34 @@ def keypoint_rcnn_inference(pred_keypoint_logits, pred_instances):
         pred_instances (list[Instances]): A list of N Instances, where N is the number of images.
 
     Returns:
-        None. Each element in pred_instances will contain an extra "pred_keypoints" field.
-            The field is a tensor of shape (#instance, K, 3) where the last
-            dimension corresponds to (x, y, score).
-            The scores are larger than 0.
+        None. Each element in pred_instances will contain extra "pred_keypoints" and
+            "pred_keypoint_heatmaps" fields. "pred_keypoints" is a tensor of shape
+            (#instance, K, 3) where the last dimension corresponds to (x, y, score).
+            The scores are larger than 0. "pred_keypoint_heatmaps" contains the raw
+            keypoint logits as passed to this function.
     """
     # flatten all bboxes from all images together (list[Boxes] -> Rx4 tensor)
     bboxes_flat = cat([b.pred_boxes.tensor for b in pred_instances], dim=0)
 
-    keypoint_results = heatmaps_to_keypoints(pred_keypoint_logits.detach(), bboxes_flat.detach())
+    pred_keypoint_logits = pred_keypoint_logits.detach()
+    keypoint_results = heatmaps_to_keypoints(pred_keypoint_logits, bboxes_flat.detach())
     num_instances_per_image = [len(i) for i in pred_instances]
     keypoint_results = keypoint_results[:, :, [0, 1, 3]].split(num_instances_per_image, dim=0)
+    heatmap_results = pred_keypoint_logits.split(num_instances_per_image, dim=0)
 
-    for keypoint_results_per_image, instances_per_image in zip(keypoint_results, pred_instances):
+    for keypoint_results_per_image, heatmap_results_per_image, instances_per_image in zip(
+        keypoint_results, heatmap_results, pred_instances
+    ):
         # keypoint_results_per_image is (num instances)x(num keypoints)x(x, y, score)
+        # heatmap_results_per_image is (num instances)x(num keypoints)x(side)x(side)
         instances_per_image.pred_keypoints = keypoint_results_per_image
+        instances_per_image.pred_keypoint_heatmaps = heatmap_results_per_image
 
 
 class BaseKeypointRCNNHead(nn.Module):
     """
-    Implement the basic Keypoint R-CNN losses and inference logic described in :paper:`Mask R-CNN`.
+    Implement the basic Keypoint R-CNN losses and inference logic described in
+    Sec. 5 of :paper:`Mask R-CNN`.
     """
 
     @configurable
@@ -171,7 +179,7 @@ class BaseKeypointRCNNHead(nn.Module):
     def forward(self, x, instances: List[Instances]):
         """
         Args:
-            x: input region feature(s) provided by :class:`ROIHeads`.
+            x: input 4D region feature(s) provided by :class:`ROIHeads`.
             instances (list[Instances]): contains the boxes & labels corresponding
                 to the input features.
                 Exact format is up to its caller to decide.
@@ -203,11 +211,15 @@ class BaseKeypointRCNNHead(nn.Module):
         raise NotImplementedError
 
 
+# To get torchscript support, we make the head a subclass of `nn.Sequential`.
+# Therefore, to add new layers in this head class, please make sure they are
+# added in the order they will be used in forward().
 @ROI_KEYPOINT_HEAD_REGISTRY.register()
-class KRCNNConvDeconvUpsampleHead(BaseKeypointRCNNHead):
+class KRCNNConvDeconvUpsampleHead(BaseKeypointRCNNHead, nn.Sequential):
     """
     A standard keypoint head containing a series of 3x3 convs, followed by
     a transpose convolution and bilinear interpolation for upsampling.
+    It is described in Sec. 5 of :paper:`Mask R-CNN`.
     """
 
     @configurable
@@ -222,15 +234,14 @@ class KRCNNConvDeconvUpsampleHead(BaseKeypointRCNNHead):
         """
         super().__init__(num_keypoints=num_keypoints, **kwargs)
 
-        # default up_scale to 2 (this can be made an option)
-        up_scale = 2
+        # default up_scale to 2.0 (this can be made an option)
+        up_scale = 2.0
         in_channels = input_shape.channels
 
-        self.blocks = []
         for idx, layer_channels in enumerate(conv_dims, 1):
             module = Conv2d(in_channels, layer_channels, 3, stride=1, padding=1)
             self.add_module("conv_fcn{}".format(idx), module)
-            self.blocks.append(module)
+            self.add_module("conv_fcn_relu{}".format(idx), nn.ReLU())
             in_channels = layer_channels
 
         deconv_kernel = 4
@@ -255,8 +266,7 @@ class KRCNNConvDeconvUpsampleHead(BaseKeypointRCNNHead):
         return ret
 
     def layers(self, x):
-        for layer in self.blocks:
-            x = F.relu(layer(x))
-        x = self.score_lowres(x)
+        for layer in self:
+            x = layer(x)
         x = interpolate(x, scale_factor=self.up_scale, mode="bilinear", align_corners=False)
         return x

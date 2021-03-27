@@ -1,7 +1,6 @@
-// Copyright (c) Facebook, Inc. and its affiliates. All Rights Reserved
+// Copyright (c) Facebook, Inc. and its affiliates.
 
 #include <torch/extension.h>
-#include "ROIAlign/ROIAlign.h"
 #include "ROIAlignRotated/ROIAlignRotated.h"
 #include "box_iou_rotated/box_iou_rotated.h"
 #include "cocoeval/cocoeval.h"
@@ -39,6 +38,14 @@ std::string get_cuda_version() {
 #endif
 }
 
+bool has_cuda() {
+#if defined(WITH_CUDA)
+  return true;
+#else
+  return false;
+#endif
+}
+
 // similar to
 // https://github.com/pytorch/pytorch/blob/master/aten/src/ATen/Version.cpp
 std::string get_compiler_version() {
@@ -70,6 +77,7 @@ std::string get_compiler_version() {
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
   m.def("get_compiler_version", &get_compiler_version, "get_compiler_version");
   m.def("get_cuda_version", &get_cuda_version, "get_cuda_version");
+  m.def("has_cuda", &has_cuda, "has_cuda");
 
   m.def("box_iou_rotated", &box_iou_rotated, "IoU for rotated boxes");
 
@@ -93,9 +101,6 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
 
   m.def("nms_rotated", &nms_rotated, "NMS for rotated boxes");
 
-  m.def("roi_align_forward", &ROIAlign_forward, "ROIAlign_forward");
-  m.def("roi_align_backward", &ROIAlign_backward, "ROIAlign_backward");
-
   m.def(
       "roi_align_rotated_forward",
       &ROIAlignRotated_forward,
@@ -115,4 +120,10 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
   pybind11::class_<COCOeval::ImageEvaluation>(m, "ImageEvaluation")
       .def(pybind11::init<>());
 }
+
+#ifdef TORCH_LIBRARY
+TORCH_LIBRARY(detectron2, m) {
+  m.def("nms_rotated", &nms_rotated);
+}
+#endif
 } // namespace detectron2

@@ -1,8 +1,8 @@
-# Copyright (c) Facebook, Inc. and its affiliates. All Rights Reserved
+# Copyright (c) Facebook, Inc. and its affiliates.
 import inspect
 import logging
 import numpy as np
-from typing import Dict, List, Optional, Tuple, Union
+from typing import Dict, List, Optional, Tuple
 import torch
 from torch import nn
 
@@ -12,7 +12,7 @@ from detectron2.structures import Boxes, ImageList, Instances, pairwise_iou
 from detectron2.utils.events import get_event_storage
 from detectron2.utils.registry import Registry
 
-from ..backbone.resnet import BottleneckBlock, make_stage
+from ..backbone.resnet import BottleneckBlock, ResNet
 from ..matcher import Matcher
 from ..poolers import ROIPooler
 from ..proposal_generator.proposal_utils import add_ground_truth_to_proposals
@@ -149,7 +149,7 @@ class ROIHeads(torch.nn.Module):
         NOTE: this interface is experimental.
 
         Args:
-            num_classes (int): number of classes. Used to label background proposals.
+            num_classes (int): number of foreground classes (i.e. background is not included)
             batch_size_per_image (int): number of proposals to sample for training
             positive_fraction (float): fraction of positive (foreground) proposals
                 to sample for training.
@@ -276,10 +276,10 @@ class ROIHeads(torch.nn.Module):
             proposals_per_image = proposals_per_image[sampled_idxs]
             proposals_per_image.gt_classes = gt_classes
 
-            # We index all the attributes of targets that start with "gt_"
-            # and have not been added to proposals yet (="gt_classes").
             if has_gt:
                 sampled_targets = matched_idxs[sampled_idxs]
+                # We index all the attributes of targets that start with "gt_"
+                # and have not been added to proposals yet (="gt_classes").
                 # NOTE: here the indexing waste some compute, because heads
                 # like masks, keypoints, etc, will filter the proposals again,
                 # (by foreground/background, or number of keypoints in the image, etc)
@@ -287,11 +287,9 @@ class ROIHeads(torch.nn.Module):
                 for (trg_name, trg_value) in targets_per_image.get_fields().items():
                     if trg_name.startswith("gt_") and not proposals_per_image.has(trg_name):
                         proposals_per_image.set(trg_name, trg_value[sampled_targets])
-            else:
-                gt_boxes = Boxes(
-                    targets_per_image.gt_boxes.tensor.new_zeros((len(sampled_idxs), 4))
-                )
-                proposals_per_image.gt_boxes = gt_boxes
+            # If no GT is given in the image, we don't know what a dummy gt value can be.
+            # Therefore the returned proposals won't have any gt_* fields, except for a
+            # gt_classes full of background label.
 
             num_bg_samples.append((gt_classes == self.num_classes).sum().item())
             num_fg_samples.append(gt_classes.numel() - num_bg_samples[-1])
@@ -347,41 +345,89 @@ class Res5ROIHeads(ROIHeads):
     The ROIHeads in a typical "C4" R-CNN model, where
     the box and mask head share the cropping and
     the per-region feature computation by a Res5 block.
+    See :paper:`ResNet` Appendix A.
     """
 
-    def __init__(self, cfg, input_shape):
-        super().__init__(cfg)
+    @configurable
+    def __init__(
+        self,
+        *,
+        in_features: List[str],
+        pooler: ROIPooler,
+        res5: nn.Module,
+        box_predictor: nn.Module,
+        mask_head: Optional[nn.Module] = None,
+        **kwargs
+    ):
+        """
+        NOTE: this interface is experimental.
 
+        Args:
+            in_features (list[str]): list of backbone feature map names to use for
+                feature extraction
+            pooler (ROIPooler): pooler to extra region features from backbone
+            res5 (nn.Sequential): a CNN to compute per-region features, to be used by
+                ``box_predictor`` and ``mask_head``. Typically this is a "res5"
+                block from a ResNet.
+            box_predictor (nn.Module): make box predictions from the feature.
+                Should have the same interface as :class:`FastRCNNOutputLayers`.
+            mask_head (nn.Module): transform features to make mask predictions
+        """
+        super().__init__(**kwargs)
+        self.in_features = in_features
+        self.pooler = pooler
+        if isinstance(res5, (list, tuple)):
+            res5 = nn.Sequential(*res5)
+        self.res5 = res5
+        self.box_predictor = box_predictor
+        self.mask_on = mask_head is not None
+        if self.mask_on:
+            self.mask_head = mask_head
+
+    @classmethod
+    def from_config(cls, cfg, input_shape):
         # fmt: off
-        self.in_features  = cfg.MODEL.ROI_HEADS.IN_FEATURES
+        ret = super().from_config(cfg)
+        in_features = ret["in_features"] = cfg.MODEL.ROI_HEADS.IN_FEATURES
         pooler_resolution = cfg.MODEL.ROI_BOX_HEAD.POOLER_RESOLUTION
         pooler_type       = cfg.MODEL.ROI_BOX_HEAD.POOLER_TYPE
-        pooler_scales     = (1.0 / input_shape[self.in_features[0]].stride, )
+        pooler_scales     = (1.0 / input_shape[in_features[0]].stride, )
         sampling_ratio    = cfg.MODEL.ROI_BOX_HEAD.POOLER_SAMPLING_RATIO
-        self.mask_on      = cfg.MODEL.MASK_ON
+        mask_on           = cfg.MODEL.MASK_ON
         # fmt: on
         assert not cfg.MODEL.KEYPOINT_ON
-        assert len(self.in_features) == 1
+        assert len(in_features) == 1
 
-        self.pooler = ROIPooler(
+        ret["pooler"] = ROIPooler(
             output_size=pooler_resolution,
             scales=pooler_scales,
             sampling_ratio=sampling_ratio,
             pooler_type=pooler_type,
         )
 
-        self.res5, out_channels = self._build_res5_block(cfg)
-        self.box_predictor = FastRCNNOutputLayers(
+        # Compatbility with old moco code. Might be useful.
+        # See notes in StandardROIHeads.from_config
+        if not inspect.ismethod(cls._build_res5_block):
+            logger.warning(
+                "The behavior of _build_res5_block may change. "
+                "Please do not depend on private methods."
+            )
+            cls._build_res5_block = classmethod(cls._build_res5_block)
+
+        ret["res5"], out_channels = cls._build_res5_block(cfg)
+        ret["box_predictor"] = FastRCNNOutputLayers(
             cfg, ShapeSpec(channels=out_channels, height=1, width=1)
         )
 
-        if self.mask_on:
-            self.mask_head = build_mask_head(
+        if mask_on:
+            ret["mask_head"] = build_mask_head(
                 cfg,
                 ShapeSpec(channels=out_channels, width=pooler_resolution, height=pooler_resolution),
             )
+        return ret
 
-    def _build_res5_block(self, cfg):
+    @classmethod
+    def _build_res5_block(cls, cfg):
         # fmt: off
         stage_channel_factor = 2 ** 3  # res5 is 8x res2
         num_groups           = cfg.MODEL.RESNETS.NUM_GROUPS
@@ -394,10 +440,10 @@ class Res5ROIHeads(ROIHeads):
             "Deformable conv is not yet supported in res5 head."
         # fmt: on
 
-        blocks = make_stage(
+        blocks = ResNet.make_stage(
             BottleneckBlock,
             3,
-            first_stride=2,
+            stride_per_block=[2, 1, 1],
             in_channels=out_channels // 2,
             bottleneck_channels=bottleneck_channels,
             out_channels=out_channels,
@@ -512,11 +558,14 @@ class StandardROIHeads(ROIHeads):
             box_head (nn.Module): transform features to make box predictions
             box_predictor (nn.Module): make box predictions from the feature.
                 Should have the same interface as :class:`FastRCNNOutputLayers`.
-            mask_in_features (list[str]): list of feature names to use for the mask head.
-                None if not using mask head.
-            mask_pooler (ROIPooler): pooler to extra region features for mask head
+            mask_in_features (list[str]): list of feature names to use for the mask
+                pooler or mask head. None if not using mask head.
+            mask_pooler (ROIPooler): pooler to extract region features from image features.
+                The mask head will then take region features to make predictions.
+                If None, the mask head will directly take the dict of image features
+                defined by `mask_in_features`
             mask_head (nn.Module): transform features to make mask predictions
-            keypoint_in_features, keypoint_pooler, keypoint_head: similar to ``mask*``.
+            keypoint_in_features, keypoint_pooler, keypoint_head: similar to ``mask_*``.
             train_on_pred_boxes (bool): whether to use proposal boxes or
                 predicted boxes from the box head to train other heads.
         """
@@ -532,6 +581,7 @@ class StandardROIHeads(ROIHeads):
             self.mask_in_features = mask_in_features
             self.mask_pooler = mask_pooler
             self.mask_head = mask_head
+
         self.keypoint_on = keypoint_in_features is not None
         if self.keypoint_on:
             self.keypoint_in_features = keypoint_in_features
@@ -609,15 +659,23 @@ class StandardROIHeads(ROIHeads):
         in_channels = [input_shape[f].channels for f in in_features][0]
 
         ret = {"mask_in_features": in_features}
-        ret["mask_pooler"] = ROIPooler(
-            output_size=pooler_resolution,
-            scales=pooler_scales,
-            sampling_ratio=sampling_ratio,
-            pooler_type=pooler_type,
+        ret["mask_pooler"] = (
+            ROIPooler(
+                output_size=pooler_resolution,
+                scales=pooler_scales,
+                sampling_ratio=sampling_ratio,
+                pooler_type=pooler_type,
+            )
+            if pooler_type
+            else None
         )
-        ret["mask_head"] = build_mask_head(
-            cfg, ShapeSpec(channels=in_channels, width=pooler_resolution, height=pooler_resolution)
-        )
+        if pooler_type:
+            shape = ShapeSpec(
+                channels=in_channels, width=pooler_resolution, height=pooler_resolution
+            )
+        else:
+            shape = {f: input_shape[f] for f in in_features}
+        ret["mask_head"] = build_mask_head(cfg, shape)
         return ret
 
     @classmethod
@@ -635,15 +693,23 @@ class StandardROIHeads(ROIHeads):
         in_channels = [input_shape[f].channels for f in in_features][0]
 
         ret = {"keypoint_in_features": in_features}
-        ret["keypoint_pooler"] = ROIPooler(
-            output_size=pooler_resolution,
-            scales=pooler_scales,
-            sampling_ratio=sampling_ratio,
-            pooler_type=pooler_type,
+        ret["keypoint_pooler"] = (
+            ROIPooler(
+                output_size=pooler_resolution,
+                scales=pooler_scales,
+                sampling_ratio=sampling_ratio,
+                pooler_type=pooler_type,
+            )
+            if pooler_type
+            else None
         )
-        ret["keypoint_head"] = build_keypoint_head(
-            cfg, ShapeSpec(channels=in_channels, width=pooler_resolution, height=pooler_resolution)
-        )
+        if pooler_type:
+            shape = ShapeSpec(
+                channels=in_channels, width=pooler_resolution, height=pooler_resolution
+            )
+        else:
+            shape = {f: input_shape[f] for f in in_features}
+        ret["keypoint_head"] = build_keypoint_head(cfg, shape)
         return ret
 
     def forward(
@@ -658,7 +724,7 @@ class StandardROIHeads(ROIHeads):
         """
         del images
         if self.training:
-            assert targets
+            assert targets, "'targets' argument is required during training"
             proposals = self.label_and_sample_proposals(proposals, targets)
         del targets
 
@@ -704,9 +770,7 @@ class StandardROIHeads(ROIHeads):
         instances = self._forward_keypoint(features, instances)
         return instances
 
-    def _forward_box(
-        self, features: Dict[str, torch.Tensor], proposals: List[Instances]
-    ) -> Union[Dict[str, torch.Tensor], List[Instances]]:
+    def _forward_box(self, features: Dict[str, torch.Tensor], proposals: List[Instances]):
         """
         Forward logic of the box prediction branch. If `self.train_on_pred_boxes is True`,
             the function puts predicted boxes in the `proposal_boxes` field of `proposals` argument.
@@ -744,9 +808,7 @@ class StandardROIHeads(ROIHeads):
             pred_instances, _ = self.box_predictor.inference(predictions, proposals)
             return pred_instances
 
-    def _forward_mask(
-        self, features: Dict[str, torch.Tensor], instances: List[Instances]
-    ) -> Union[Dict[str, torch.Tensor], List[Instances]]:
+    def _forward_mask(self, features: Dict[str, torch.Tensor], instances: List[Instances]):
         """
         Forward logic of the mask prediction branch.
 
@@ -755,7 +817,7 @@ class StandardROIHeads(ROIHeads):
                 Same as in :meth:`ROIHeads.forward`.
             instances (list[Instances]): the per-image instances to train/predict masks.
                 In training, they can be the proposals.
-                In inference, they can be the predicted boxes.
+                In inference, they can be the boxes predicted by R-CNN box head.
 
         Returns:
             In training, a dict of losses.
@@ -764,22 +826,19 @@ class StandardROIHeads(ROIHeads):
         if not self.mask_on:
             return {} if self.training else instances
 
-        features = [features[f] for f in self.mask_in_features]
-
         if self.training:
-            # The loss is only defined on positive proposals.
-            proposals, _ = select_foreground_proposals(instances, self.num_classes)
-            proposal_boxes = [x.proposal_boxes for x in proposals]
-            mask_features = self.mask_pooler(features, proposal_boxes)
-            return self.mask_head(mask_features, proposals)
-        else:
-            pred_boxes = [x.pred_boxes for x in instances]
-            mask_features = self.mask_pooler(features, pred_boxes)
-            return self.mask_head(mask_features, instances)
+            # head is only trained on positive proposals.
+            instances, _ = select_foreground_proposals(instances, self.num_classes)
 
-    def _forward_keypoint(
-        self, features: Dict[str, torch.Tensor], instances: List[Instances]
-    ) -> Union[Dict[str, torch.Tensor], List[Instances]]:
+        if self.mask_pooler is not None:
+            features = [features[f] for f in self.mask_in_features]
+            boxes = [x.proposal_boxes if self.training else x.pred_boxes for x in instances]
+            features = self.mask_pooler(features, boxes)
+        else:
+            features = {f: features[f] for f in self.mask_in_features}
+        return self.mask_head(features, instances)
+
+    def _forward_keypoint(self, features: Dict[str, torch.Tensor], instances: List[Instances]):
         """
         Forward logic of the keypoint prediction branch.
 
@@ -788,7 +847,7 @@ class StandardROIHeads(ROIHeads):
                 Same as in :meth:`ROIHeads.forward`.
             instances (list[Instances]): the per-image instances to train/predict keypoints.
                 In training, they can be the proposals.
-                In inference, they can be the predicted boxes.
+                In inference, they can be the boxes predicted by R-CNN box head.
 
         Returns:
             In training, a dict of losses.
@@ -797,17 +856,15 @@ class StandardROIHeads(ROIHeads):
         if not self.keypoint_on:
             return {} if self.training else instances
 
-        features = [features[f] for f in self.keypoint_in_features]
-
         if self.training:
-            # The loss is defined on positive proposals with >=1 visible keypoints.
-            proposals, _ = select_foreground_proposals(instances, self.num_classes)
-            proposals = select_proposals_with_visible_keypoints(proposals)
-            proposal_boxes = [x.proposal_boxes for x in proposals]
+            # head is only trained on positive proposals with >=1 visible keypoints.
+            instances, _ = select_foreground_proposals(instances, self.num_classes)
+            instances = select_proposals_with_visible_keypoints(instances)
 
-            keypoint_features = self.keypoint_pooler(features, proposal_boxes)
-            return self.keypoint_head(keypoint_features, proposals)
+        if self.keypoint_pooler is not None:
+            features = [features[f] for f in self.keypoint_in_features]
+            boxes = [x.proposal_boxes if self.training else x.pred_boxes for x in instances]
+            features = self.keypoint_pooler(features, boxes)
         else:
-            pred_boxes = [x.pred_boxes for x in instances]
-            keypoint_features = self.keypoint_pooler(features, pred_boxes)
-            return self.keypoint_head(keypoint_features, instances)
+            features = dict([(f, features[f]) for f in self.keypoint_in_features])
+        return self.keypoint_head(features, instances)

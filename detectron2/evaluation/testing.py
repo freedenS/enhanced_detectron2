@@ -1,4 +1,4 @@
-# Copyright (c) Facebook, Inc. and its affiliates. All Rights Reserved
+# Copyright (c) Facebook, Inc. and its affiliates.
 import logging
 import numpy as np
 import pprint
@@ -15,7 +15,8 @@ def print_csv_format(results):
     Args:
         results (OrderedDict[dict]): task_name -> {metric -> score}
     """
-    assert isinstance(results, OrderedDict), results  # unordered results cannot be properly printed
+    # unordered results cannot be properly printed
+    assert isinstance(results, OrderedDict) or not len(results), results
     logger = logging.getLogger(__name__)
     for task, res in results.items():
         # Don't print "AP-category" metrics since they are usually not tracked.
@@ -39,9 +40,13 @@ def verify_results(cfg, results):
 
     ok = True
     for task, metric, expected, tolerance in expected_results:
-        actual = results[task][metric]
+        actual = results[task].get(metric, None)
+        if actual is None:
+            ok = False
+            continue
         if not np.isfinite(actual):
             ok = False
+            continue
         diff = abs(actual - expected)
         if diff > tolerance:
             ok = False

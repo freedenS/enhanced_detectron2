@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# Copyright (c) Facebook, Inc. and its affiliates. All Rights Reserved
+# Copyright (c) Facebook, Inc. and its affiliates.
 
 """
 DeepLab Training Script.
@@ -17,8 +17,7 @@ from detectron2.config import get_cfg
 from detectron2.data import DatasetMapper, MetadataCatalog, build_detection_train_loader
 from detectron2.engine import DefaultTrainer, default_argument_parser, default_setup, launch
 from detectron2.evaluation import CityscapesSemSegEvaluator, DatasetEvaluators, SemSegEvaluator
-
-from deeplab import add_deeplab_config, build_lr_scheduler
+from detectron2.projects.deeplab import add_deeplab_config, build_lr_scheduler
 
 
 def build_sem_seg_train_aug(cfg):
@@ -64,8 +63,6 @@ class Trainer(DefaultTrainer):
             return SemSegEvaluator(
                 dataset_name,
                 distributed=True,
-                num_classes=cfg.MODEL.SEM_SEG_HEAD.NUM_CLASSES,
-                ignore_label=cfg.MODEL.SEM_SEG_HEAD.IGNORE_VALUE,
                 output_dir=output_folder,
             )
         if evaluator_type == "cityscapes_sem_seg":
