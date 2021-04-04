@@ -12,6 +12,7 @@ from detectron2.layers import (
     ModulatedDeformConv,
     ShapeSpec,
     get_norm,
+    get_activation,
 )
 
 from .backbone import Backbone
@@ -35,7 +36,7 @@ class BasicBlock(CNNBlockBase):
     with two 3x3 conv layers and a projection shortcut if needed.
     """
 
-    def __init__(self, in_channels, out_channels, *, stride=1, norm="BN"):
+    def __init__(self, in_channels, out_channels, *, stride=1, norm="BN", activation="ReLU"):
         """
         Args:
             in_channels (int): Number of input channels.
@@ -43,9 +44,12 @@ class BasicBlock(CNNBlockBase):
             stride (int): Stride for the first conv.
             norm (str or callable): normalization for all conv layers.
                 See :func:`layers.get_norm` for supported format.
+            activation(str):activation to use.
         """
         super().__init__(in_channels, out_channels, stride)
 
+        self.activation = get_activation(activation)
+        
         if in_channels != out_channels:
             self.shortcut = Conv2d(
                 in_channels,
@@ -66,6 +70,7 @@ class BasicBlock(CNNBlockBase):
             padding=1,
             bias=False,
             norm=get_norm(norm, out_channels),
+            activation=self.activation,
         )
 
         self.conv2 = Conv2d(
@@ -84,7 +89,6 @@ class BasicBlock(CNNBlockBase):
 
     def forward(self, x):
         out = self.conv1(x)
-        out = F.relu_(out)
         out = self.conv2(out)
 
         if self.shortcut is not None:
@@ -93,7 +97,7 @@ class BasicBlock(CNNBlockBase):
             shortcut = x
 
         out += shortcut
-        out = F.relu_(out)
+        out = self.activation(out)
         return out
 
 
@@ -113,6 +117,7 @@ class BottleneckBlock(CNNBlockBase):
         stride=1,
         num_groups=1,
         norm="BN",
+        activation="ReLU",
         stride_in_1x1=False,
         dilation=1,
     ):
@@ -123,11 +128,14 @@ class BottleneckBlock(CNNBlockBase):
             num_groups (int): number of groups for the 3x3 conv layer.
             norm (str or callable): normalization for all conv layers.
                 See :func:`layers.get_norm` for supported format.
+            activation(str): activation to use.
             stride_in_1x1 (bool): when stride>1, whether to put stride in the
                 first 1x1 convolution or the bottleneck 3x3 convolution.
             dilation (int): the dilation rate of the 3x3 conv layer.
         """
         super().__init__(in_channels, out_channels, stride)
+
+        self.activation = get_activation(activation)
 
         if in_channels != out_channels:
             self.shortcut = Conv2d(
@@ -153,6 +161,7 @@ class BottleneckBlock(CNNBlockBase):
             stride=stride_1x1,
             bias=False,
             norm=get_norm(norm, bottleneck_channels),
+            activation=self.activation,
         )
 
         self.conv2 = Conv2d(
@@ -165,6 +174,7 @@ class BottleneckBlock(CNNBlockBase):
             groups=num_groups,
             dilation=dilation,
             norm=get_norm(norm, bottleneck_channels),
+            activation=self.activation,
         )
 
         self.conv3 = Conv2d(
@@ -193,10 +203,8 @@ class BottleneckBlock(CNNBlockBase):
 
     def forward(self, x):
         out = self.conv1(x)
-        out = F.relu_(out)
 
         out = self.conv2(out)
-        out = F.relu_(out)
 
         out = self.conv3(out)
 
@@ -206,7 +214,7 @@ class BottleneckBlock(CNNBlockBase):
             shortcut = x
 
         out += shortcut
-        out = F.relu_(out)
+        out = self.activation(out)
         return out
 
 
@@ -332,7 +340,7 @@ class BasicStem(CNNBlockBase):
     The standard ResNet stem (layers before the first residual block).
     """
 
-    def __init__(self, in_channels=3, out_channels=64, norm="BN"):
+    def __init__(self, in_channels=3, out_channels=64, norm="BN", activation="ReLU"):
         """
         Args:
             norm (str or callable): norm after the first conv layer.
@@ -340,6 +348,7 @@ class BasicStem(CNNBlockBase):
         """
         super().__init__(in_channels, out_channels, 4)
         self.in_channels = in_channels
+        self.activation=get_activation(activation)
         self.conv1 = Conv2d(
             in_channels,
             out_channels,
@@ -348,12 +357,12 @@ class BasicStem(CNNBlockBase):
             padding=3,
             bias=False,
             norm=get_norm(norm, out_channels),
+            activation=self.activation,
         )
         weight_init.c2_msra_fill(self.conv1)
 
     def forward(self, x):
         x = self.conv1(x)
-        x = F.relu_(x)
         x = F.max_pool2d(x, kernel_size=3, stride=2, padding=1)
         return x
 
@@ -619,10 +628,12 @@ def build_resnet_backbone(cfg, input_shape):
     """
     # need registration of new blocks/stems?
     norm = cfg.MODEL.RESNETS.NORM
+    activation = cfg.MODEL.RESNETS.ACTIVATION
     stem = BasicStem(
         in_channels=input_shape.channels,
         out_channels=cfg.MODEL.RESNETS.STEM_OUT_CHANNELS,
         norm=norm,
+        activation=activation,
     )
 
     # fmt: off
@@ -670,6 +681,7 @@ def build_resnet_backbone(cfg, input_shape):
             "in_channels": in_channels,
             "out_channels": out_channels,
             "norm": norm,
+            "activation": activation,
         }
         # Use BasicBlock for R18 and R34.
         if depth in [18, 34]:

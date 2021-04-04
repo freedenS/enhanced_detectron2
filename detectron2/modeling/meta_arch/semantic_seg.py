@@ -7,7 +7,7 @@ from torch import nn
 from torch.nn import functional as F
 
 from detectron2.config import configurable
-from detectron2.layers import Conv2d, ShapeSpec, get_norm
+from detectron2.layers import Conv2d, ShapeSpec, get_norm, get_activation
 from detectron2.structures import ImageList
 from detectron2.utils.registry import Registry
 
@@ -121,6 +121,7 @@ class SemSegFPNHead(nn.Module):
         common_stride: int,
         loss_weight: float = 1.0,
         norm: Optional[Union[str, Callable]] = None,
+        activation: str,
         ignore_value: int = -1
     ):
         """
@@ -140,7 +141,7 @@ class SemSegFPNHead(nn.Module):
         self.in_features = [k for k, v in input_shape]
         feature_strides = [v.stride for k, v in input_shape]
         feature_channels = [v.channels for k, v in input_shape]
-
+        activation = get_activation(activation)
         self.ignore_value = ignore_value
         self.common_stride = common_stride
         self.loss_weight = loss_weight
@@ -161,7 +162,7 @@ class SemSegFPNHead(nn.Module):
                     padding=1,
                     bias=not norm,
                     norm=norm_module,
-                    activation=F.relu,
+                    activation=activation,
                 )
                 weight_init.c2_msra_fill(conv)
                 head_ops.append(conv)
@@ -185,6 +186,7 @@ class SemSegFPNHead(nn.Module):
             "conv_dims": cfg.MODEL.SEM_SEG_HEAD.CONVS_DIM,
             "common_stride": cfg.MODEL.SEM_SEG_HEAD.COMMON_STRIDE,
             "norm": cfg.MODEL.SEM_SEG_HEAD.NORM,
+            "activation": cfg.MODEL.SEM_SEG_HEAD.ACTIVATION,
             "loss_weight": cfg.MODEL.SEM_SEG_HEAD.LOSS_WEIGHT,
         }
 

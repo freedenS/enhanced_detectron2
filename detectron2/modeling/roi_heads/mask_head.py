@@ -6,7 +6,7 @@ from torch import nn
 from torch.nn import functional as F
 
 from detectron2.config import configurable
-from detectron2.layers import Conv2d, ConvTranspose2d, ShapeSpec, cat, get_norm
+from detectron2.layers import Conv2d, ConvTranspose2d, ShapeSpec, cat, get_norm, get_activation
 from detectron2.structures import Instances
 from detectron2.utils.events import get_event_storage
 from detectron2.utils.registry import Registry
@@ -172,7 +172,7 @@ class BaseMaskRCNNHead(nn.Module):
 
     @classmethod
     def from_config(cls, cfg, input_shape):
-        return {"vis_period": cfg.VIS_PERIOD}
+        return {"vis_period": cfg.VIS_PERIOD, "activation": cfg.MODEL.ROI_MASK_HEAD.ACTIVATION}
 
     def forward(self, x, instances: List[Instances]):
         """
@@ -230,7 +230,7 @@ class MaskRCNNConvUpsampleHead(BaseMaskRCNNHead, nn.Sequential):
         assert len(conv_dims) >= 1, "conv_dims have to be non-empty!"
 
         self.conv_norm_relus = []
-
+        activation = get_activation(activation)
         cur_channels = input_shape.channels
         for k, conv_dim in enumerate(conv_dims[:-1]):
             conv = Conv2d(
@@ -241,7 +241,7 @@ class MaskRCNNConvUpsampleHead(BaseMaskRCNNHead, nn.Sequential):
                 padding=1,
                 bias=not conv_norm,
                 norm=get_norm(conv_norm, conv_dim),
-                activation=nn.ReLU(),
+                activation=activation,
             )
             self.add_module("mask_fcn{}".format(k + 1), conv)
             self.conv_norm_relus.append(conv)
@@ -250,7 +250,7 @@ class MaskRCNNConvUpsampleHead(BaseMaskRCNNHead, nn.Sequential):
         self.deconv = ConvTranspose2d(
             cur_channels, conv_dims[-1], kernel_size=2, stride=2, padding=0
         )
-        self.add_module("deconv_relu", nn.ReLU())
+        self.add_module("deconv_activation", activation)
         cur_channels = conv_dims[-1]
 
         self.predictor = Conv2d(cur_channels, num_classes, kernel_size=1, stride=1, padding=0)

@@ -6,7 +6,7 @@ import torch
 from torch import nn
 
 from detectron2.config import configurable
-from detectron2.layers import Conv2d, ShapeSpec, get_norm
+from detectron2.layers import Conv2d, ShapeSpec, get_norm, get_activation
 from detectron2.utils.registry import Registry
 
 __all__ = ["FastRCNNConvFCHead", "build_box_head", "ROI_BOX_HEAD_REGISTRY"]
@@ -31,7 +31,7 @@ class FastRCNNConvFCHead(nn.Sequential):
 
     @configurable
     def __init__(
-        self, input_shape: ShapeSpec, *, conv_dims: List[int], fc_dims: List[int], conv_norm=""
+        self, input_shape: ShapeSpec, *, conv_dims: List[int], fc_dims: List[int], conv_norm="", activation="ReLU"
     ):
         """
         NOTE: this interface is experimental.
@@ -46,6 +46,8 @@ class FastRCNNConvFCHead(nn.Sequential):
         super().__init__()
         assert len(conv_dims) + len(fc_dims) > 0
 
+        self.activation = get_activation(activation)
+
         self._output_size = (input_shape.channels, input_shape.height, input_shape.width)
 
         self.conv_norm_relus = []
@@ -57,7 +59,7 @@ class FastRCNNConvFCHead(nn.Sequential):
                 padding=1,
                 bias=not conv_norm,
                 norm=get_norm(conv_norm, conv_dim),
-                activation=nn.ReLU(),
+                activation=self.activation,
             )
             self.add_module("conv{}".format(k + 1), conv)
             self.conv_norm_relus.append(conv)
@@ -69,7 +71,7 @@ class FastRCNNConvFCHead(nn.Sequential):
                 self.add_module("flatten", nn.Flatten())
             fc = nn.Linear(int(np.prod(self._output_size)), fc_dim)
             self.add_module("fc{}".format(k + 1), fc)
-            self.add_module("fc_relu{}".format(k + 1), nn.ReLU())
+            self.add_module("fc_activation{}".format(k + 1), self.activation)
             self.fcs.append(fc)
             self._output_size = fc_dim
 
@@ -89,6 +91,7 @@ class FastRCNNConvFCHead(nn.Sequential):
             "conv_dims": [conv_dim] * num_conv,
             "fc_dims": [fc_dim] * num_fc,
             "conv_norm": cfg.MODEL.ROI_BOX_HEAD.NORM,
+            "activation": cfg.MODEL.ROI_BOX_HEAD.ACTIVATION,
         }
 
     def forward(self, x):

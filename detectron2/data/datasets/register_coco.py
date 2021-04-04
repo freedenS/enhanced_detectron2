@@ -18,8 +18,8 @@ def register_sem_seg(name, gt_root, image_root, gt_ext="png", image_ext="jpg"):
     assert isinstance(gt_root, (str, os.PathLike)), gt_root
     assert isinstance(image_root, (str, os.PathLike)), image_root
 
-    DatasetCatalog.register(modelID, lambda:load_sem_seg(gt_root, image_root, gt_ext, image_ext))
-    MetadataCatalog.get(modelID).set(sem_seg_root=gt_root, image_root=image_root, evaluator_type="sem_seg")
+    DatasetCatalog.register(name, lambda:load_sem_seg(gt_root, image_root, gt_ext, image_ext))
+    MetadataCatalog.get(name).set(sem_seg_root=gt_root, image_root=image_root, evaluator_type="sem_seg")
 
 def register_coco_instances(name, metadata, json_file, image_root):
     """

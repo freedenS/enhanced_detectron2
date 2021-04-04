@@ -5,7 +5,7 @@ from torch import nn
 from torch.nn import functional as F
 
 from detectron2.config import configurable
-from detectron2.layers import Conv2d, ConvTranspose2d, cat, interpolate
+from detectron2.layers import Conv2d, ConvTranspose2d, cat, interpolate, get_activation
 from detectron2.structures import Instances, heatmaps_to_keypoints
 from detectron2.utils.events import get_event_storage
 from detectron2.utils.registry import Registry
@@ -162,6 +162,7 @@ class BaseKeypointRCNNHead(nn.Module):
         ret = {
             "loss_weight": cfg.MODEL.ROI_KEYPOINT_HEAD.LOSS_WEIGHT,
             "num_keypoints": cfg.MODEL.ROI_KEYPOINT_HEAD.NUM_KEYPOINTS,
+            "actiation": cfg.MODEL.ROI_KEYPOINT_HEAD.ACTIVATION,
         }
         normalize_by_visible = (
             cfg.MODEL.ROI_KEYPOINT_HEAD.NORMALIZE_LOSS_BY_VISIBLE_KEYPOINTS
@@ -237,11 +238,11 @@ class KRCNNConvDeconvUpsampleHead(BaseKeypointRCNNHead, nn.Sequential):
         # default up_scale to 2.0 (this can be made an option)
         up_scale = 2.0
         in_channels = input_shape.channels
-
+        activation = get_activation(activation)
         for idx, layer_channels in enumerate(conv_dims, 1):
             module = Conv2d(in_channels, layer_channels, 3, stride=1, padding=1)
             self.add_module("conv_fcn{}".format(idx), module)
-            self.add_module("conv_fcn_relu{}".format(idx), nn.ReLU())
+            self.add_module("conv_fcn_activation{}".format(idx), activation)
             in_channels = layer_channels
 
         deconv_kernel = 4
