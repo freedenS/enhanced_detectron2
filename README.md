@@ -59,10 +59,10 @@ See [EASY_START.md](EASY_START.md)
 
 ### deployments
 
+- [x] [FasterRCNN(C4)-tensorrt](https://github.com/wang-xinyu/tensorrtx/tree/master/rcnn)
+- [ ] MaskRCNN(C4)-tensorrt
+- [ ] RotatedRCNN(C4)-tensorrt
 - [ ] RetinaNet-tensorrt
-- [ ] FPN_Faster-tensorrt
-- [ ] FPN-Mask-tensorrt
-- [ ] FPN_Rotated_RCNN-tensorrt
 - [ ] FCOS-tensorrt
 - [ ] CenterMask2-tensorrt
 - [ ] DETR-tensorrt
@@ -70,6 +70,6 @@ See [EASY_START.md](EASY_START.md)
 
 ### operators
 
-- [ ] roialign(tensorrt)
+- [x] [roialign(tensorrt)](https://github.com/wang-xinyu/tensorrtx/blob/master/rcnn/RoiAlignPlugin.h)
 - [ ] ...
 
