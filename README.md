@@ -51,7 +51,7 @@ See [EASY_START.md](EASY_START.md)
 
 ### models
 
-- [ ] FCOS
+- [x] [FCOS](./detectron2/modeling/meta_arch/README.md)
 - [ ] CenterMask2
 - [ ] DETR
 - [ ] YOLO
@@ -60,7 +60,7 @@ See [EASY_START.md](EASY_START.md)
 ### deployments
 
 - [x] [FasterRCNN(C4)-tensorrt](https://github.com/wang-xinyu/tensorrtx/tree/master/rcnn)
-- [ ] MaskRCNN(C4)-tensorrt
+- [x] [MaskRCNN(C4)-tensorrt](https://github.com/wang-xinyu/tensorrtx/tree/master/rcnn)
 - [ ] RotatedRCNN(C4)-tensorrt
 - [ ] RetinaNet-tensorrt
 - [ ] FCOS-tensorrt
