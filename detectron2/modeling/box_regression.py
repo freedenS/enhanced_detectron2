@@ -3,6 +3,7 @@ import math
 from typing import List, Tuple
 import torch
 from fvcore.nn import giou_loss, smooth_l1_loss
+from detectron2.layers import diou_loss, ciou_loss
 
 from detectron2.layers import cat
 from detectron2.structures import Boxes
@@ -258,11 +259,13 @@ def _dense_box_regression_loss(
             beta=smooth_l1_beta,
             reduction="sum",
         )
-    elif box_reg_loss_type == "giou":
+    elif box_reg_loss_type in ["giou", "diou", "ciou"]:
         pred_boxes = [
             box2box_transform.apply_deltas(k, anchors) for k in cat(pred_anchor_deltas, dim=1)
         ]
-        loss_box_reg = giou_loss(
+        iou_loss_function_dict = {"giou": giou_loss, "diou": diou_loss, "ciou": ciou_loss}
+        iou_loss_function = iou_loss_function_dict[box_reg_loss_type]
+        loss_box_reg = iou_loss_function(
             torch.stack(pred_boxes)[fg_mask], torch.stack(gt_boxes)[fg_mask], reduction="sum"
         )
     else:

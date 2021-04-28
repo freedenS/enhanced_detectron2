@@ -3,6 +3,7 @@ import logging
 from typing import Dict, List, Tuple, Union
 import torch
 from fvcore.nn import giou_loss, smooth_l1_loss
+from detectron2.layers import diou_loss, ciou_loss
 from torch import nn
 from torch.nn import functional as F
 
@@ -290,12 +291,14 @@ class FastRCNNOutputs:
                 self.smooth_l1_beta,
                 reduction="sum",
             )
-        elif self.box_reg_loss_type == "giou":
+        elif self.box_reg_loss_type in ["giou", "diou", "ciou"]:
             fg_pred_boxes = self.box2box_transform.apply_deltas(
                 self.pred_proposal_deltas[fg_inds[:, None], gt_class_cols],
                 self.proposals.tensor[fg_inds],
             )
-            loss_box_reg = giou_loss(
+            iou_loss_function_dict = {"giou": giou_loss, "diou": diou_loss, "ciou": ciou_loss}
+            iou_loss_function = iou_loss_function_dict[box_reg_loss_type]
+            loss_box_reg = iou_loss_function(
                 fg_pred_boxes,
                 self.gt_boxes.tensor[fg_inds],
                 reduction="sum",

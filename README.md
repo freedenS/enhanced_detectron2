@@ -33,6 +33,12 @@ See [EASY_START.md](EASY_START.md)
 - [x] [FReLU](./detectron2/layers/README.md)
 - [ ] ..
 
+### loss
+
+- [x] [diou](./detectron2/layers/README.md)
+- [x] [ciou](./detectron2/layers/README.md)
+- [ ] ..
+
 ### backbone
 
 - [x] [path aggregation network](./detectron2/modeling/backbone/README.md)
