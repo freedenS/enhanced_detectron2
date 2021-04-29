@@ -31,13 +31,18 @@ See [EASY_START.md](EASY_START.md)
 - [x] [Swish](./detectron2/layers/README.md)
 - [x] [Mish](./detectron2/layers/README.md)
 - [x] [FReLU](./detectron2/layers/README.md)
-- [ ] ..
+- [ ] ...
 
 ### loss
 
 - [x] [diou](./detectron2/layers/README.md)
 - [x] [ciou](./detectron2/layers/README.md)
-- [ ] ..
+- [ ] ...
+
+### attention
+
+- [x] [CBAM](./detectron2/layers/README.md)
+- [ ] ...
 
 ### backbone
 

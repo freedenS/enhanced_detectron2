@@ -137,7 +137,8 @@ _C.MODEL.BACKBONE.NAME = "build_resnet_backbone"
 # There are 5 stages in ResNet. The first is a convolution, and the following
 # stages are each group of residual blocks.
 _C.MODEL.BACKBONE.FREEZE_AT = 2
-
+# use which attention modules, options: cbam
+_C.MODEL.BACKBONE.ATTENTION_MODULE = ""
 
 # ---------------------------------------------------------------------------- #
 # FPN options

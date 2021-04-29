@@ -31,3 +31,15 @@ retinanet
 # support in fcos is coming soon
 ```
 
+### attention
+
+[attentions.py](./attentions.py) add some attention modules. such as CBAM. Code is modified from https://github.com/luuuyi/CBAM.PyTorch and https://github.com/Jongchan/attention-module
+Note: It will initialize when it's created.
+
+Usage: just set the attention module you want to use as follow.
+
+```
+CBAM
+  cfg.MODEL.BACKBONE.ATTENTION_MODULE="CBAM"
+```
+

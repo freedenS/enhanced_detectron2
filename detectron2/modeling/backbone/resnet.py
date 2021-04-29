@@ -13,6 +13,7 @@ from detectron2.layers import (
     ShapeSpec,
     get_norm,
     get_activation,
+    CBAM,
 )
 
 from .backbone import Backbone
@@ -36,7 +37,8 @@ class BasicBlock(CNNBlockBase):
     with two 3x3 conv layers and a projection shortcut if needed.
     """
 
-    def __init__(self, in_channels, out_channels, *, stride=1, norm="BN", activation="ReLU"):
+    def __init__(self, in_channels, out_channels, *, stride=1, norm="BN", activation="ReLU",
+    attention=""):
         """
         Args:
             in_channels (int): Number of input channels.
@@ -50,6 +52,8 @@ class BasicBlock(CNNBlockBase):
 
         self.activation = get_activation(activation)
         
+        self.attention = CBAM(out_channels) if attention == "CBAM" else None
+
         if in_channels != out_channels:
             self.shortcut = Conv2d(
                 in_channels,
@@ -96,6 +100,10 @@ class BasicBlock(CNNBlockBase):
         else:
             shortcut = x
 
+        # attention
+        if self.attention is not None:
+            out = self.attention(out)
+
         out += shortcut
         out = self.activation(out)
         return out
@@ -118,6 +126,7 @@ class BottleneckBlock(CNNBlockBase):
         num_groups=1,
         norm="BN",
         activation="ReLU",
+        attention="",
         stride_in_1x1=False,
         dilation=1,
     ):
@@ -136,6 +145,8 @@ class BottleneckBlock(CNNBlockBase):
         super().__init__(in_channels, out_channels, stride)
 
         self.activation = get_activation(activation)
+
+        self.attention = CBAM(out_channels) if attention == "CBAM" else None
 
         if in_channels != out_channels:
             self.shortcut = Conv2d(
@@ -212,7 +223,11 @@ class BottleneckBlock(CNNBlockBase):
             shortcut = self.shortcut(x)
         else:
             shortcut = x
-
+        
+        # attention
+        if self.attention is not None:
+            out = self.attention(out)
+        
         out += shortcut
         out = self.activation(out)
         return out
@@ -629,6 +644,7 @@ def build_resnet_backbone(cfg, input_shape):
     # need registration of new blocks/stems?
     norm = cfg.MODEL.RESNETS.NORM
     activation = cfg.MODEL.RESNETS.ACTIVATION
+
     stem = BasicStem(
         in_channels=input_shape.channels,
         out_channels=cfg.MODEL.RESNETS.STEM_OUT_CHANNELS,
@@ -638,6 +654,7 @@ def build_resnet_backbone(cfg, input_shape):
 
     # fmt: off
     freeze_at           = cfg.MODEL.BACKBONE.FREEZE_AT
+    attention           = cfg.MODEL.BACKBONE.ATTENTION_MODULE
     out_features        = cfg.MODEL.RESNETS.OUT_FEATURES
     depth               = cfg.MODEL.RESNETS.DEPTH
     num_groups          = cfg.MODEL.RESNETS.NUM_GROUPS
@@ -682,6 +699,7 @@ def build_resnet_backbone(cfg, input_shape):
             "out_channels": out_channels,
             "norm": norm,
             "activation": activation,
+            "attention": attention,
         }
         # Use BasicBlock for R18 and R34.
         if depth in [18, 34]:
