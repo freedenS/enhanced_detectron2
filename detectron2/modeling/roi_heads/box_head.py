@@ -46,8 +46,6 @@ class FastRCNNConvFCHead(nn.Sequential):
         super().__init__()
         assert len(conv_dims) + len(fc_dims) > 0
 
-        self.activation = get_activation(activation)
-
         self._output_size = (input_shape.channels, input_shape.height, input_shape.width)
 
         self.conv_norm_relus = []
@@ -59,7 +57,7 @@ class FastRCNNConvFCHead(nn.Sequential):
                 padding=1,
                 bias=not conv_norm,
                 norm=get_norm(conv_norm, conv_dim),
-                activation=self.activation,
+                activation=get_activation(activation),
             )
             self.add_module("conv{}".format(k + 1), conv)
             self.conv_norm_relus.append(conv)
@@ -71,7 +69,7 @@ class FastRCNNConvFCHead(nn.Sequential):
                 self.add_module("flatten", nn.Flatten())
             fc = nn.Linear(int(np.prod(self._output_size)), fc_dim)
             self.add_module("fc{}".format(k + 1), fc)
-            self.add_module("fc_activation{}".format(k + 1), self.activation)
+            self.add_module("fc_activation{}".format(k + 1), get_activation(activation))
             self.fcs.append(fc)
             self._output_size = fc_dim
 

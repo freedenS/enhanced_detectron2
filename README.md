@@ -33,15 +33,20 @@ See [EASY_START.md](EASY_START.md)
 - [x] [FReLU](./detectron2/layers/README.md)
 - [ ] ...
 
-### loss
+### loss functions
 
 - [x] [diou](./detectron2/layers/README.md)
 - [x] [ciou](./detectron2/layers/README.md)
 - [ ] ...
 
-### attention
+### attention modules
 
 - [x] [CBAM](./detectron2/layers/README.md)
+- [ ] ...
+
+### visualization modules
+
+- [x] [GradCam++](./detectron2/engine/README.md)
 - [ ] ...
 
 ### backbone

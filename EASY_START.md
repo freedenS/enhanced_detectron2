@@ -69,7 +69,7 @@ open in brower
 
 ##### options
 
-- show the difference between ground truth and prediction
+- visualize the difference between ground truth and prediction
 
 ```
 set cfg.VIS_PERIOD > 0

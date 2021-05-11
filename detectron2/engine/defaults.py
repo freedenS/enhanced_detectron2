@@ -387,6 +387,14 @@ class DefaultTrainer(TrainerBase):
             )
             if cfg.TEST.PRECISE_BN.ENABLED and get_bn_modules(self.model)
             else None,
+            hooks.GradcamHook(
+                # which layer need to visualize
+                cfg.VISUALIZED.GRADCAM.LAYER_NAMES,
+                # visualization of period
+                cfg.VISUALIZED.GRADCAM.VIS_PERIOD,
+            )
+            if cfg.VISUALIZED.GRADCAM.ENABLED
+            else None,
         ]
 
         # Do PreciseBN before checkpointer, because it updates the model and need to
@@ -634,7 +642,6 @@ Alternatively, you can call evaluation functions yourself (see Colab balloon tut
         if frozen:
             cfg.freeze()
         return cfg
-
 
 # Access basic attributes from the underlying trainer
 for _attr in ["model", "data_loader", "optimizer"]:

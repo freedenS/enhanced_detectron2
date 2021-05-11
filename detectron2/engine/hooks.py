@@ -9,6 +9,8 @@ import tempfile
 import time
 from collections import Counter
 import torch
+import numpy as np
+import cv2
 from fvcore.common.checkpoint import PeriodicCheckpointer as _PeriodicCheckpointer
 from fvcore.common.param_scheduler import ParamScheduler
 from fvcore.common.timer import Timer
@@ -17,12 +19,13 @@ from fvcore.nn.precise_bn import get_bn_modules, update_bn_stats
 import detectron2.utils.comm as comm
 from detectron2.evaluation.testing import flatten_results_dict
 from detectron2.solver import LRMultiplier
-from detectron2.utils.events import EventStorage, EventWriter
+from detectron2.utils.events import EventStorage, EventWriter, get_event_storage
 from detectron2.utils.file_io import PathManager
 
 from .train_loop import HookBase
 
 __all__ = [
+    "GradcamHook",
     "CallbackHook",
     "IterationTimer",
     "PeriodicWriter",
@@ -38,6 +41,93 @@ __all__ = [
 Implement some common hooks.
 """
 
+
+class GradcamHook(HookBase):
+    """
+    Create a hook using gradcam to visualize training process.
+    code is mofied from https://github.com/yizt/Grad-CAM.pytorch
+    """
+
+    def __init__(self, layer_names, vis_period):
+        self.layer_names = layer_names
+        self.vis_period = vis_period
+        self._handlers = []
+
+    def before_train(self):
+        self.trainer.model.gradcam_layer_modules = {}
+        for name, layer in self.trainer.model.named_modules():
+            if name in self.layer_names and isinstance(layer, torch.nn.Conv2d):
+                self.trainer.model.gradcam_layer_modules[name] = layer
+                self._handlers.append(layer.register_forward_hook(self._get_features_hook))
+                self._handlers.append(layer.register_backward_hook(self._get_grads_hook))
+
+    def after_step(self):
+        if (self.trainer.iter % self.vis_period) == 0:
+            storage = get_event_storage()
+
+            batched_inputs = []
+            for data in self.trainer.model.cur_batched_data:
+                tmp = {}
+                tmp["image"] = data["image"].permute(1,2,0).cpu().numpy()
+                tmp["image"] = cv2.resize(tmp["image"], (data["width"], data["height"]))
+                tmp["height"] = data["height"]
+                tmp["width"] = data["width"]
+                batched_inputs.append(tmp)
+            self.trainer.cur_batched_data = None
+
+            for k in self.trainer.model.gradcam_layer_modules:
+                module = self.trainer.model.gradcam_layer_modules[k]
+                gradients = module.gradcam_gradients.detach().cpu().data.numpy()
+                features = module.gradcam_features
+                assert(gradients.shape[0] == len(features))
+                assert(gradients.shape[0] == len(batched_inputs))
+                vis_imglist = []
+                vis_name = k
+                for batch_idx in range(len(gradients)):
+                    gradient = gradients[batch_idx]
+                    feature = features[batch_idx].detach().cpu().data.numpy()
+                    data = batched_inputs[batch_idx]
+
+                    gradient = np.maximum(gradient, 0.)
+                    indication = np.where(gradient > 0, 1., 0.)
+                    norm_factor = np.sum(gradient, axis=(1, 2))
+                    for i in range(len(norm_factor)):
+                        norm_factor[i] = 1. / norm_factor[i] if norm_factor[i] > 0. else 0.
+                    alpha = indication * norm_factor[:, np.newaxis, np.newaxis]  # [C,H,W]
+
+                    weight = np.sum(gradient * alpha, axis=(1, 2))  # [C]  alpha*ReLU(gradient)
+
+                    cam = feature * weight[:, np.newaxis, np.newaxis]  # [C,H,W]
+                    cam = np.sum(cam, axis=0)  # [H,W]
+
+                    # normalization
+                    cam -= np.min(cam)
+                    cam /= np.max(cam)
+                    
+                    cam = cv2.resize(cam, (data["width"], data["height"]))
+                    img = data['image']
+                    heatmap = cv2.applyColorMap(np.uint8(255 * cam), cv2.COLORMAP_JET)
+                    heatmap = (0.5 * img + 0.5 * heatmap).astype(np.uint8)
+                    vis_imglist.append(heatmap)
+                vis_img = np.vstack(vis_imglist)
+                vis_img = vis_img.transpose(2, 0, 1)
+                storage.put_image(vis_name, vis_img)
+
+    def after_train(self):
+        for handler in self._handlers:
+            handler.remove()
+
+    def _get_features_hook(self, module, input, output):
+        module.gradcam_features = output
+
+    def _get_grads_hook(self, module, input_grad, output_grad):
+        """
+        :param input_grad: tuple, input_grad[0]: None
+                                   input_grad[1]: weight
+                                   input_grad[2]: bias
+        :param output_grad:tuple,len=1
+        """
+        module.gradcam_gradients = output_grad[0]
 
 class CallbackHook(HookBase):
     """
