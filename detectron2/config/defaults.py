@@ -700,12 +700,9 @@ _C.CUDNN_BENCHMARK = False
 _C.VIS_PERIOD = 0
 # The visualization config
 _C.VISUALIZED = CN()
-# GradCam++ https://arxiv.org/abs/1710.11063
-_C.VISUALIZED.GRADCAM = CN({"ENABLED": False})
 # which layers need to visualize
-_C.VISUALIZED.GRADCAM.LAYER_NAMES = []
-# period of visualization
-_C.VISUALIZED.GRADCAM.VIS_PERIOD = 0
+_C.VISUALIZED.LAYER_NAMES = []
+
 
 # global config is for quick hack purposes.
 # You can set them in command line or config files,

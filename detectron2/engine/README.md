@@ -2,11 +2,10 @@
 
 - GradCam++
 
-Usage: just set parameters with cfg.VISUALIZED.GRADCAM and refer to [how to visualize](../../EASY_START.md#visualization).
+Usage: just set cfg.VISUALIZED.LAYER_NAMES and follow [how to visualize](../../EASY_START.md#visualization).
 
 ```
-cfg.VISUALIZED.GRADCAM.ENABLED = True
-cfg.VISUALIZED.GRADCAM.LAYER_NAMES = [
+cfg.VISUALIZED.LAYER_NAMES = [
   "backbone.bottom_up.res3.3.conv3",
   "backbone.bottom_up.res4.5.conv3",
   "backbone.bottom_up.res5.2.conv3",
@@ -24,9 +23,8 @@ cfg.VISUALIZED.GRADCAM.LAYER_NAMES = [
   "head.bbox_subnet.4",
   "head.bbox_subnet.6"
 ] # example for retinanet
-cfg.VISUALIZED.GRADCAM.VIS_PERIOD = 100
 
-# how to get cfg.VISUALIZED.GRADCAM.LAYER_NAMES
+# how to get cfg.VISUALIZED.LAYER_NAMES
 # model = build_model(cfg)
 # for n, module in model.named_modules():
 #    print(n)

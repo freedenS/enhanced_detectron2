@@ -60,18 +60,13 @@ predictions = predictor(img)
 
 Visualizing the training process.
 
+It include [GradCam++](./detectron2/engine/README.md), weight and bias of specified layers
+
 Usage: 
 
 ```
+set cfg.VIS_PERIOD > 0
 tensorboard --logdir=./events_dir
 open in brower 
-```
-
-##### options
-
-- visualize the difference between ground truth and prediction
-
-```
-set cfg.VIS_PERIOD > 0
 ```
 

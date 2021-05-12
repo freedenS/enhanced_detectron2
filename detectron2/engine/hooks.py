@@ -112,6 +112,8 @@ class GradcamHook(HookBase):
                 vis_img = np.vstack(vis_imglist)
                 vis_img = vis_img.transpose(2, 0, 1)
                 storage.put_image(vis_name, vis_img)
+                storage.put_histogram(vis_name + ".weight", module.weight, 2048)
+                storage.put_histogram(vis_name + ".bias", module.bias, 2048)
 
     def after_train(self):
         for handler in self._handlers:

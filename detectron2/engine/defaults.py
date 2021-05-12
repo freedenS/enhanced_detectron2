@@ -389,11 +389,11 @@ class DefaultTrainer(TrainerBase):
             else None,
             hooks.GradcamHook(
                 # which layer need to visualize
-                cfg.VISUALIZED.GRADCAM.LAYER_NAMES,
+                cfg.VISUALIZED.LAYER_NAMES,
                 # visualization of period
-                cfg.VISUALIZED.GRADCAM.VIS_PERIOD,
+                cfg.VIS_PERIOD,
             )
-            if cfg.VISUALIZED.GRADCAM.ENABLED
+            if cfg.VIS_PERIOD > 0
             else None,
         ]
 
