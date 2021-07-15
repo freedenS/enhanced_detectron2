@@ -78,10 +78,10 @@ See [EASY_START.md](EASY_START.md)
 - [x] [FasterRCNN(C4)-tensorrt](https://github.com/wang-xinyu/tensorrtx/tree/master/rcnn)
 - [x] [MaskRCNN(C4)-tensorrt](https://github.com/wang-xinyu/tensorrtx/tree/master/rcnn)
 - [ ] RotatedRCNN(C4)-tensorrt
-- [ ] RetinaNet-tensorrt
+- [x] [RetinaNet-tensorrt](https://github.com/NVIDIA/retinanet-examples) refer to NVIDIA
 - [ ] FCOS-tensorrt
 - [ ] CenterMask2-tensorrt
-- [ ] DETR-tensorrt
+- [x] [DETR-tensorrt](https://github.com/wang-xinyu/tensorrtx/tree/master/detr)
 - [ ] ...
 
 ### operators
