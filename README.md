@@ -84,6 +84,11 @@ See [EASY_START.md](EASY_START.md)
 - [x] [DETR-tensorrt](https://github.com/wang-xinyu/tensorrtx/tree/master/detr)
 - [ ] ...
 
+### model compress
+
+- [x] [ABCPruner](https://github.com/freedenS/enhanced_detectron2/blob/abcpruner/tools/abcpruner/README.md)
+- [ ] ...
+
 ### operators
 
 - [x] [roialign(tensorrt)](https://github.com/wang-xinyu/tensorrtx/blob/master/rcnn/RoiAlignPlugin.h)
