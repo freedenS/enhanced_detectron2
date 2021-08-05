@@ -362,6 +362,58 @@ class DefaultTrainer(TrainerBase):
                 self.model._sync_params_and_buffers()
             self.start_iter = comm.all_gather(self.start_iter)[0]
 
+    # ABCPruner
+    def loadWeights(self, weights=None):
+        if weights is not None:
+            pretrained_model = weights
+        else:
+            import random
+            pretrained_model = torch.load(self.cfg.MODEL.WEIGHTS)['model']
+            key = list(pretrained_model.keys())
+            init_layer_list = [
+                'backbone.bottom_up.res2.0',
+                'backbone.bottom_up.res2.1',
+                'backbone.bottom_up.res2.2',
+                'backbone.bottom_up.res3.0',
+                'backbone.bottom_up.res3.1',
+                'backbone.bottom_up.res3.2',
+                'backbone.bottom_up.res3.3',
+                'backbone.bottom_up.res4.0',
+                'backbone.bottom_up.res4.1',
+                'backbone.bottom_up.res4.2',
+                'backbone.bottom_up.res4.3',
+                'backbone.bottom_up.res4.4',
+                'backbone.bottom_up.res4.5',
+                'backbone.bottom_up.res5.0',
+                'backbone.bottom_up.res5.1',
+                'backbone.bottom_up.res5.2',
+            ]
+            for l in init_layer_list:
+                # conv1 weight norm
+                select_num = eval('self.model.' + l[:-2] + '[' + l[-1] + '].conv1').out_channels
+                filter_num1 = pretrained_model[l + '.conv1.weight'].size(0)
+                filter_num2 = pretrained_model[l + '.conv2.weight'].size(0)
+                sel_ind1 = random.sample(range(0, filter_num1 - 1), select_num)
+                sel_ind1.sort()
+                sel_ind2 = random.sample(range(0, filter_num2 - 1), select_num)
+                sel_ind2.sort()
+                pretrained_model[l + '.conv1.weight'] = pretrained_model[l + '.conv1.weight'][sel_ind1, :, :, :]
+                pretrained_model[l + '.conv1.norm.weight'] = pretrained_model[l + '.conv1.norm.weight'][sel_ind1]
+                pretrained_model[l + '.conv1.norm.bias'] = pretrained_model[l + '.conv1.norm.bias'][sel_ind1]
+                pretrained_model[l + '.conv1.norm.running_mean'] = pretrained_model[l + '.conv1.norm.running_mean'][sel_ind1]
+                pretrained_model[l + '.conv1.norm.running_var'] = pretrained_model[l + '.conv1.norm.running_var'][sel_ind1]
+                
+                pretrained_model[l + '.conv2.weight'] = pretrained_model[l + '.conv2.weight'][sel_ind2, :, :, :]
+                pretrained_model[l + '.conv2.weight'] = pretrained_model[l + '.conv2.weight'][:, sel_ind1, :, :]
+                pretrained_model[l + '.conv2.norm.weight'] = pretrained_model[l + '.conv2.norm.weight'][sel_ind2]
+                pretrained_model[l + '.conv2.norm.bias'] = pretrained_model[l + '.conv2.norm.bias'][sel_ind2]
+                pretrained_model[l + '.conv2.norm.running_mean'] = pretrained_model[l + '.conv2.norm.running_mean'][sel_ind2]
+                pretrained_model[l + '.conv2.norm.running_var'] = pretrained_model[l + '.conv2.norm.running_var'][sel_ind2]
+                
+                pretrained_model[l + '.conv3.weight'] = pretrained_model[l + '.conv3.weight'][:, sel_ind2, :, :]
+
+        self.model.load_state_dict(pretrained_model)
+
     def build_hooks(self):
         """
         Build a list of default hooks, including timing, evaluation,
@@ -410,7 +462,8 @@ class DefaultTrainer(TrainerBase):
 
         # Do evaluation after checkpointer, because then if it fails,
         # we can use the saved checkpoint to debug.
-        ret.append(hooks.EvalHook(cfg.TEST.EVAL_PERIOD, test_and_save_results))
+        # ABCPruner
+        # ret.append(hooks.EvalHook(cfg.TEST.EVAL_PERIOD, test_and_save_results))
 
         if comm.is_main_process():
             # Here the default print/log frequency of each writer is used.

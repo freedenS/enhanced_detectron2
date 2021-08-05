@@ -558,9 +558,14 @@ class ResNet(Backbone):
                     newk = k[: -len("_per_block")]
                     assert newk not in kwargs, f"Cannot call make_stage with both {k} and {newk}!"
                     curr_kwargs[newk] = v[i]
+                elif k is 'abcp_honey':
+                    continue
                 else:
                     curr_kwargs[k] = v
-
+            if kwargs['abcp_honey'] is not None:
+                bottleneck_channels = curr_kwargs["bottleneck_channels"]
+                honey = kwargs["abcp_honey"].pop(0)
+                curr_kwargs["bottleneck_channels"] = max(1, round(bottleneck_channels * honey / 10))
             blocks.append(
                 block_class(in_channels=in_channels, out_channels=out_channels, **curr_kwargs)
             )
@@ -667,6 +672,8 @@ def build_resnet_backbone(cfg, input_shape):
     deform_on_per_stage = cfg.MODEL.RESNETS.DEFORM_ON_PER_STAGE
     deform_modulated    = cfg.MODEL.RESNETS.DEFORM_MODULATED
     deform_num_groups   = cfg.MODEL.RESNETS.DEFORM_NUM_GROUPS
+    import copy
+    abc_honey           = copy.deepcopy(cfg.MODEL.ABCP.HONEY)
     # fmt: on
     assert res5_dilation in {1, 2}, "res5_dilation cannot be {}.".format(res5_dilation)
 
@@ -700,6 +707,7 @@ def build_resnet_backbone(cfg, input_shape):
             "norm": norm,
             "activation": activation,
             "attention": attention,
+            "abcp_honey": abc_honey,
         }
         # Use BasicBlock for R18 and R34.
         if depth in [18, 34]:
